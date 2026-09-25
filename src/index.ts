@@ -1,4 +1,8 @@
 import { Client, GatewayIntentBits } from 'discord.js';
+import dotenv from 'dotenv';
+import { incrementCommand, counterCommand } from './commands/counter';
+
+dotenv.config();
 
 const client = new Client({
   intents: [
@@ -8,16 +12,25 @@ const client = new Client({
   ],
 });
 
-const TOKEN = process.env.DISCORD_TOKEN || 'YOUR_TOKEN_HERE';
+const TOKEN = process.env.DISCORD_TOKEN;
+
+const commands = [incrementCommand, counterCommand];
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user?.tag}`);
 });
 
-client.on('messageCreate', (message) => {
-  if (message.content === '!ping') {
-    message.reply('Pong!');
+client.on('messageCreate', async (message) => {
+  if (message.author.bot) return;
+
+  const command = commands.find(c => message.content === c.name);
+  if (command) {
+    await command.execute(message);
   }
 });
 
-client.login(TOKEN);
+if (TOKEN && TOKEN !== 'YOUR_TOKEN_HERE') {
+  client.login(TOKEN);
+} else {
+  console.error('Please provide a valid DISCORD_TOKEN in your .env file.');
+}
