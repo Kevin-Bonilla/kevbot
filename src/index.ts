@@ -25,6 +25,9 @@ client.on('messageCreate', async (message) => {
 
   const command = commands.find(c => message.content === c.name);
   if (command) {
+    if (command.requiredChannelId && message.channel.id !== command.requiredChannelId) {
+      return; // Ignore command if not in the correct channel
+    }
     await command.execute(message);
   }
 });
