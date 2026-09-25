@@ -27,4 +27,9 @@
 ### help
 - displays all commands 
 
+### rally 
+- @'s members that play a certain game and makes a server annoucement now playing insert game
+
+
+
 
