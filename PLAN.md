@@ -22,4 +22,9 @@
 - tinder like swiping thing
 - feed ai raw schedule -> it makes panels into objects -> yes no maybe -> finalizes a schedule for you -> can compare with friends
 
+### github link 
+
+### help
+- displays all commands 
+
 
