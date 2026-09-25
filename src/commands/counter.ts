@@ -1,6 +1,15 @@
 import { Command } from '../types';
 import { CounterService } from '../services/counter.service';
 
+/**
+ * Command to increment the oopsie counter.
+ * Only available in kevins-ai-chamber
+ * 
+ * @param name - The name of the command
+ * @param description - The description of the command
+ * @param requiredChannelId - The ID of the channel where the command is allowed
+ * @returns A promise that resolves when the command has been executed
+ */
 export const incrementCommand: Command = {
   name: '!oopsie',
   description: 'Increments the counter',
@@ -11,6 +20,15 @@ export const incrementCommand: Command = {
   },
 };
 
+/**
+ * Command to display the oopsie counter.
+ * Only available in kevins-ai-chamber
+ * 
+ * @param name - The name of the command
+ * @param description - The description of the command
+ * @param requiredChannelId - The ID of the channel where the command is allowed
+ * @returns A promise that resolves when the command has been executed
+ */
 export const counterCommand: Command = {
   name: '!oopsiecounter',
   description: 'Displays the current counter',
