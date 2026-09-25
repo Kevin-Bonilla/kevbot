@@ -10,7 +10,7 @@ import { CounterService } from '../services/counter.service';
  * @param requiredChannelId - The ID of the channel where the command is allowed
  * @returns A promise that resolves when the command has been executed
  */
-export const incrementCommand: Command = {
+export const oopsieCommand: Command = {
   name: '!oopsie',
   description: 'Increments the counter',
   requiredChannelId: '1552121753692667977',
@@ -29,7 +29,7 @@ export const incrementCommand: Command = {
  * @param requiredChannelId - The ID of the channel where the command is allowed
  * @returns A promise that resolves when the command has been executed
  */
-export const counterCommand: Command = {
+export const displayOopsieCountCommand: Command = {
   name: '!oopsiecounter',
   description: 'Displays the current counter',
   requiredChannelId: '1552121753692667977',

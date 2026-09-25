@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
-import { incrementCommand, counterCommand } from './commands/counter';
+import { oopsieCommand, displayOopsieCountCommand } from './commands/counter';
 
 dotenv.config();
 
@@ -14,10 +14,12 @@ const client = new Client({
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
-const commands = [incrementCommand, counterCommand];
+const commands = [oopsieCommand, displayOopsieCountCommand];
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user?.tag}`);
+  console.log(`KEVBOT is ONLINE!`);
+  console.log(`--------------------------------`);
 });
 
 client.on('messageCreate', async (message) => {
