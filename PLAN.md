@@ -3,6 +3,7 @@
 ## Roadmap
 1. [x] Onboarding the bot to the server.
 2. [x] Implement Matthew Word Counter.
+3. [] Implement the purge
 
 ## Features
 ### Matthew Oopsie Counter
@@ -21,5 +22,18 @@
 - this might have to be a separate app.
 - tinder like swiping thing
 - feed ai raw schedule -> it makes panels into objects -> yes no maybe -> finalizes a schedule for you -> can compare with friends
+
+### github link 
+
+### help
+- displays all commands 
+
+### rally 
+- @'s members that play a certain game and makes a server annoucement now playing insert game
+
+### Latest Changes
+ - Command that shows the most recent release notes
+
+
 
 
