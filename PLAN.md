@@ -3,6 +3,7 @@
 ## Roadmap
 1. [x] Onboarding the bot to the server.
 2. [x] Implement Matthew Word Counter.
+3. [] Implement the purge
 
 ## Features
 ### Matthew Oopsie Counter
@@ -29,6 +30,9 @@
 
 ### rally 
 - @'s members that play a certain game and makes a server annoucement now playing insert game
+
+### Latest Changes
+ - Command that shows the most recent release notes
 
 
 
