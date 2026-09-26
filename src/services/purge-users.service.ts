@@ -24,7 +24,14 @@ export class InactiveUserService {
     console.log(`Found ${channels.size} text channels.`);
     
     for (const channel of channels) {
+      // Check if we have permissions to read messages in this channel
+      if (!client.guilds.cache.get(channel.guildId)?.members.me?.permissions.has('ViewChannel')) {
+        console.log(`Skipping channel ${channel.name} (ID: ${channel.id}) due to lack of ViewChannel permission.`);
+        continue;
+      }
+
       if (!channel.messages || typeof channel.messages.fetch !== 'function') {
+        console.log(`Skipping channel ${channel.name} (ID: ${channel.id}) because messages.fetch is not a function.`);
         continue;
       }
 
@@ -58,9 +65,9 @@ export class InactiveUserService {
           lastId = messages.last().id;
           if (messages.size < 100) break;
         }
-        console.log(`Fetched ${messagesFromThisChannel} messages from channel: ${channel.name} (${channel.id})`);
+        console.log(`Successfully scanned channel: ${channel.name} (${channel.id}) - Fetched ${messagesFromThisChannel} messages.`);
       } catch (err) {
-        console.error(`Could not read history for channel ${channel?.id}:`, err);
+        console.error(`Error reading history for channel ${channel?.name || channel?.id}:`, err);
       }
     }
 

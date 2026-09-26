@@ -2,6 +2,7 @@ import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
 import { oopsieCommand, displayOopsieCountCommand } from './commands/counter';
 import { purgeDryRunCommand } from './commands/admin';
+import { debugCommand } from './commands/debug';
 
 dotenv.config();
 
@@ -16,7 +17,7 @@ const client = new Client({
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
-const commands = [oopsieCommand, displayOopsieCountCommand, purgeDryRunCommand];
+const commands = [oopsieCommand, displayOopsieCountCommand, purgeDryRunCommand, debugCommand];
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user?.tag}`);
