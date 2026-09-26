@@ -1,6 +1,7 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
 import { oopsieCommand, displayOopsieCountCommand } from './commands/counter';
+import { purgeDryRunCommand } from './commands/admin';
 
 dotenv.config();
 
@@ -9,12 +10,13 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.GuildMembers,
   ],
 });
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
-const commands = [oopsieCommand, displayOopsieCountCommand];
+const commands = [oopsieCommand, displayOopsieCountCommand, purgeDryRunCommand];
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user?.tag}`);
@@ -30,7 +32,7 @@ client.on('messageCreate', async (message) => {
     if (command.requiredChannelId && message.channel.id !== command.requiredChannelId) {
       return; // Ignore command if not in the correct channel
     }
-    await command.execute(message);
+    await command.execute(message, client);
   }
 });
 
