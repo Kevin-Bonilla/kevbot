@@ -20,12 +20,18 @@ const TOKEN = process.env.DISCORD_TOKEN;
 
 const commands = [oopsieCommand, displayOopsieCountCommand, purgeDryRunCommand, debugCommand, githubCommand];
 
+/**
+ * Event listener for when the bot is ready.
+ */
 client.once('ready', () => {
   console.log(`Logged in as ${client.user?.tag}`);
   console.log(`KEVBOT is ONLINE!`);
   console.log(`--------------------------------`);
 });
 
+/**
+ * Event listener for when a message is created in a channel.
+ */
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
@@ -37,6 +43,7 @@ client.on('messageCreate', async (message) => {
     await command.execute(message, client);
   }
 });
+
 
 if (TOKEN && TOKEN !== 'YOUR_TOKEN_HERE') {
   client.login(TOKEN);
