@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import { oopsieCommand, displayOopsieCountCommand } from './commands/counter';
 import { purgeDryRunCommand } from './commands/admin';
 import { debugCommand } from './commands/debug';
+import { githubCommand } from './commands/github';
 
 dotenv.config();
 
@@ -17,7 +18,7 @@ const client = new Client({
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
-const commands = [oopsieCommand, displayOopsieCountCommand, purgeDryRunCommand, debugCommand];
+const commands = [oopsieCommand, displayOopsieCountCommand, purgeDryRunCommand, debugCommand, githubCommand];
 
 client.once('ready', () => {
   console.log(`Logged in as ${client.user?.tag}`);
