@@ -1,6 +1,15 @@
 import { Command } from '../types';
 import { InactiveUserService } from '../services/purge-users.service';
 
+/**
+ * Command to scan for inactive users and display them.
+ * Only available in kevins-ai-chamber
+ * 
+ * @param name - The name of the command
+ * @param description - The description of the command
+ * @param requiredChannelId - The ID of the channel where the command is allowed
+ * @returns A promise that resolves when the command has been executed
+ */
 export const purgeDryRunCommand: Command = {
   name: '!purgeDryRun',
   description: 'Scan for inactive users and display them',
