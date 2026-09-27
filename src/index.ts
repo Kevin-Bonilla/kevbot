@@ -21,7 +21,13 @@ const client = new Client({
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
-const commands = [oopsieCommand, displayOopsieCountCommand, purgeDryRunCommand, debugCommand, githubCommand];
+const commands = [
+  oopsieCommand, 
+  displayOopsieCountCommand, 
+  purgeDryRunCommand, 
+  debugCommand, 
+  githubCommand
+];
 
 /**
  * Event listener for when the bot is ready.
