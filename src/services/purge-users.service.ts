@@ -93,6 +93,21 @@ export class InactiveUserService {
     return inactiveUsers;
   }
 
+  /**
+   * Purges inactive users from the guild based on the list of inactive users omitting the whitelisted users.
+   * 
+   * @param client 
+   */
+  static async purgeInactiveUsers(client: Client): Promise<void> {
+    const inactiveUsers = this.getInactiveUsers();
+    console.log(`Purging ${inactiveUsers.length} inactive users...`);
+  }
+
+  /**
+   * Reads the list of inactive users from the JSON file.
+   * 
+   * @returns List of Inactive Users
+   */
   static getInactiveUsers(): InactiveUser[] {
     if (!fs.existsSync(dataPath)) {
       console.warn("Inactive users data file does not exist. Please run the scan first.");
