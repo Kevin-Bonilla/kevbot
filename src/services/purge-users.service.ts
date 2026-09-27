@@ -5,6 +5,7 @@ import { InactiveUser } from '../types/users';
 
 const dataPath = path.resolve(__dirname, '../../data/inactive_users.json');
 export class InactiveUserService {
+  
   /**
    * Scans all text channels to find users who haven't messaged in over a year.
    * It fetches the complete available history to identify each user's latest message.
