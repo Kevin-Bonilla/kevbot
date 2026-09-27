@@ -1,15 +1,9 @@
 import fs from 'fs';
 import path from 'path';
 import { Client, Collection, Message } from 'discord.js';
+import { InactiveUser } from '../types/users';
 
 const dataPath = path.resolve(__dirname, '../../data/inactive_users.json');
-
-type InactiveUser = {
-  username: string;
-  id: string;
-  lastActive: string | null;
-};
-
 export class InactiveUserService {
   /**
    * Scans all text channels to find users who haven't messaged in over a year.
