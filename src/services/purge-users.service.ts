@@ -5,10 +5,11 @@ import { InactiveUser } from '../types/users';
 
 const dataPath = path.resolve(__dirname, '../../data/inactive_users.json');
 export class InactiveUserService {
-  
+
   /**
    * Scans all text channels to find users who haven't messaged in over a year.
    * It fetches the complete available history to identify each user's latest message.
+   * 
    * @param client The Discord client instance
    * @returns List of inactive user objects
    */
@@ -90,5 +91,15 @@ export class InactiveUserService {
     console.log(`Inactive users identified: ${inactiveUsers.length}`);
     fs.writeFileSync(dataPath, JSON.stringify(inactiveUsers, null, 2));
     return inactiveUsers;
+  }
+
+  static getInactiveUsers(): InactiveUser[] {
+    if (!fs.existsSync(dataPath)) {
+      console.warn("Inactive users data file does not exist. Please run the scan first.");
+      return [];
+    }
+
+    const data = fs.readFileSync(dataPath, 'utf-8');
+    return JSON.parse(data) as InactiveUser[];
   }
 }
