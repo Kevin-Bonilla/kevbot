@@ -1,9 +1,12 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
-import { oopsieCommand, displayOopsieCountCommand } from './commands/counter';
-import { purgeDryRunCommand } from './commands/admin';
-import { debugCommand } from './commands/debug';
-import { githubCommand } from './commands/github';
+import { 
+  oopsieCommand, 
+  displayOopsieCountCommand,
+  purgeDryRunCommand,
+  debugCommand,
+  githubCommand,
+} from './commands/index';
 
 dotenv.config();
 
