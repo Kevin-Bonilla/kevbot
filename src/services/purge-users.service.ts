@@ -126,8 +126,13 @@ export class InactiveUserService {
 
   /**
    * Reads the whitelist of user IDs from data/whitelisted_users.json.
-   * File format: a JSON array of Discord user IDs,
-   * e.g. ["123456789012345678", "987654321098765432"].
+   * Format: a JSON array of entries, each an object with a Discord user
+   * `id`, optionally carrying a free-form `note`:
+   *   [
+   *     { "id": "123456789012345678", "note": "admin, don't kick" },
+   *     { "id": "987654321098765432" }
+   *   ]
+   * Bare id strings in the array are also accepted for convenience.
    * A missing or malformed file yields an empty whitelist (nobody exempt).
    * 
    * @returns Array of whitelisted user IDs
@@ -136,9 +141,18 @@ export class InactiveUserService {
     if (!fs.existsSync(whitelistPath)) return [];
 
     try {
-      const parsed = JSON.parse(fs.readFileSync(whitelistPath, 'utf-8'));
+      const parsed: unknown = JSON.parse(fs.readFileSync(whitelistPath, 'utf-8'));
       if (!Array.isArray(parsed)) return [];
-      return parsed.map((v: unknown) => String(v)).filter((v: string) => /^\d+$/.test(v));
+      return parsed
+        .map((entry: unknown): string | null => {
+          if (typeof entry === 'string') return entry;
+          if (entry !== null && typeof entry === 'object'
+              && typeof (entry as Record<string, unknown>).id === 'string') {
+            return (entry as Record<string, unknown>).id as string;
+          }
+          return null;
+        })
+        .filter((id: string | null): id is string => id !== null && /^\d+$/.test(id));
     } catch (err) {
       console.warn(`Failed to parse whitelist file; treating as empty.`, err);
       return [];

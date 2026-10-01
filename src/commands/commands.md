@@ -16,6 +16,8 @@
    a 60-second confirmation window. Requires the purge role (PURGE_ROLE_ID
    or PURGE_ROLE_NAME in .env).
 3. `!purge confirm` — same user, within 60s: kicks the targets. Skips anyone
-   in `data/whitelisted_users.json` (JSON array of user IDs). Discord only
-   gets the kicked/failed counts; per-user results go to
+   in `data/whitelisted_users.json`, an array of `{ "id": "...", "note"?: "..." }`
+   entries (bare id strings also accepted), e.g.
+   `[ { "id": "123...", "note": "admin, don't kick" } ]`.
+   Discord only gets the kicked/failed counts; per-user results go to
    `data/purge_results.json`.
