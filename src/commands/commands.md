@@ -11,7 +11,9 @@
 
 ## Purge workflow
 1. `!purgeDryRun` — scans every text channel for users inactive over a year,
-   writes `data/inactive_users.json`. Safe, no action taken.
+   writes `data/inactive_users.json`. Safe, no action taken. Streams a live
+   "Scanning X/N" progress update (its reply is edited per channel) since a
+   full-history scan can take several minutes.
 2. `!purge` — preview: how many would be kicked (minus whitelisted), arms
    a 60-second confirmation window. Requires the purge role (PURGE_ROLE_ID
    or PURGE_ROLE_NAME in .env).

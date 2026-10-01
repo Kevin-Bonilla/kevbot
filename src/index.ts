@@ -1,5 +1,6 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
+import { log } from './logging/logger';
 import { 
   oopsieCommand, 
   displayOopsieCountCommand,
@@ -37,9 +38,8 @@ const commands = [
  * Event listener for when the bot is ready.
  */
 client.once('ready', () => {
-  console.log(`Logged in as ${client.user?.tag}`);
-  console.log(`KEVBOT is ONLINE!`);
-  console.log(`--------------------------------`);
+  log.info(`Logged in as ${client.user?.tag}`);
+  log.info('KEVBOT is ONLINE!');
 });
 
 /**
@@ -61,5 +61,5 @@ client.on('messageCreate', async (message) => {
 if (TOKEN && TOKEN !== 'YOUR_TOKEN_HERE') {
   client.login(TOKEN);
 } else {
-  console.error('Please provide a valid DISCORD_TOKEN in your .env file.');
+  log.error('Please provide a valid DISCORD_TOKEN in your .env file.');
 }

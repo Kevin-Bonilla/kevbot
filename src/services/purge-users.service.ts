@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { Client, Collection, Message } from 'discord.js';
+import { Client, Collection, Message, NewsChannel, PublicThreadChannel, TextChannel } from 'discord.js';
 import { UserRecord, KickOutcome, PurgeResult } from '../types/users';
+import { log } from '../logging/logger';
 
 const dataPath = path.resolve(__dirname, '../../data/inactive_users.json');
 const whitelistPath = path.resolve(__dirname, '../../data/whitelisted_users.json');
@@ -33,31 +34,40 @@ export class InactiveUserService {
   /**
    * Scans all text channels to find users who haven't messaged in over a year.
    * It fetches the complete available history to identify each user's latest message.
-   * 
+   *
    * @param client The Discord client instance
+   * @param onProgress Optional: called with (completedChannels, totalChannels, channelName)
+   *                   after each channel finishes, so callers can stream a live
+   *                   "5 of 12 — #general" update to the requester.
    * @returns List of inactive user objects
    */
-  static async scanInactiveUsers(client: Client): Promise<UserRecord[]> {
-    console.log("Starting inactive user scan...");
+  static async scanInactiveUsers(
+    client: Client,
+    onProgress?: (completedChannels: number, totalChannels: number, channelName: string) => void
+  ): Promise<UserRecord[]> {
+    log.debug("Starting inactive user scan...");
     const cutoffDate = new Date();
     cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
-    
-    console.log(`Cutoff date set to: ${cutoffDate.toISOString()}`);
-    
+
+    log.debug(`Cutoff date set to: ${cutoffDate.toISOString()}`);
+
     const lastSeen = new Map<string, Date>();
 
     const guild = client.guilds.cache.first();
     if (!guild) {
-      console.error("No guild found. Could not check members.");
+      log.error("No guild found. Could not check members.");
       return [];
     }
 
-    const channels = guild.channels.cache.filter(c => c.isTextBased());
-    console.log(`Found ${channels.size} text channels.`);
-    
-    for (const channel of channels.values()) {
+    const channels = [...guild.channels.cache
+      .filter((c): c is TextChannel | NewsChannel | PublicThreadChannel => c.isTextBased())
+      .values()];
+    log.info(`Dry-run scan: scanning ${channels.length} text channels`);
+
+    let completed = 0;
+    for (const channel of channels) {
       if (!('messages' in channel) || typeof channel.messages.fetch !== 'function') {
-        console.log(`Skipping channel ${channel.name || 'Unknown'} (ID: ${channel.id}) - Reason: messages.fetch is not a function.`);
+        log.warn(`Skipping channel ${channel.name || 'Unknown'} (ID: ${channel.id}) - messages.fetch unavailable`);
         continue;
       }
 
@@ -87,16 +97,19 @@ export class InactiveUserService {
           if (!oldestMessageId || messages.size < 100) break;
           lastId = oldestMessageId;
         }
-        console.log(`Successfully scanned channel: ${channel.name} (${channel.id}) - Fetched ${messagesFromThisChannel} messages.`);
+        log.debug(`Scanned ${channel.name} (${channel.id}) — ${messagesFromThisChannel} messages`);
       } catch (err) {
-        console.error(`Error reading history for channel ${channel?.name || channel?.id}:`, err);
+        log.error(`Error reading history for channel ${channel.name || channel.id}:`, err);
       }
+
+      completed++;
+      onProgress?.(completed, channels.length, channel.name || 'channel');
     }
 
-    console.log(`Total unique users found in messages: ${lastSeen.size}`);
-    
+    log.debug(`Total unique users found in messages: ${lastSeen.size}`);
+
     const members = await guild.members.fetch();
-    console.log(`Total members in guild: ${members.size}`);
+    log.debug(`Total members in guild: ${members.size}`);
 
     const inactiveUsers: UserRecord[] = [];
     for (const member of members.values()) {
@@ -112,7 +125,7 @@ export class InactiveUserService {
       }
     }
 
-    console.log(`Inactive users identified: ${inactiveUsers.length}`);
+    log.info(`Dry-run scan complete: ${inactiveUsers.length} inactive, results in ${dataPath}`);
     fs.writeFileSync(dataPath, JSON.stringify(inactiveUsers, null, 2));
     return inactiveUsers;
   }
@@ -133,7 +146,7 @@ export class InactiveUserService {
    */
   static getInactiveUsers(): UserRecord[] {
     if (!fs.existsSync(dataPath)) {
-      console.warn("Inactive users data file does not exist. Please run the scan first.");
+      log.warn("Inactive users data file does not exist. Please run the scan first.");
       return [];
     }
 
@@ -218,7 +231,7 @@ export class InactiveUserService {
       throw new Error("No guild found. The bot may not be in a server.");
     }
 
-    console.log(`Purging ${targets.length} inactive users (${skippedWhitelisted.length} whitelisted skipped)...`);
+    log.info(`Purging ${targets.length} inactive users (${skippedWhitelisted.length} whitelisted skipped)...`);
 
     const kicked: KickOutcome[] = [];
     const failed: KickOutcome[] = [];
@@ -244,11 +257,11 @@ export class InactiveUserService {
           await member.kick(PURGE_REASON);
           outcome.status = 'kicked';
           kicked.push(outcome);
-          console.log(`Kicked ${user.username} (${user.id})`);
+          log.info(`Kicked ${user.username} (${user.id})`);
         } catch (err) {
           outcome.error = err instanceof Error ? err.message : String(err);
           failed.push(outcome);
-          console.error(`Failed to kick ${user.username} (${user.id}):`, outcome.error);
+          log.error(`Failed to kick ${user.username} (${user.id}):`, outcome.error);
         }
 
         await sleep(KICK_INTERVAL_MS);
@@ -256,7 +269,7 @@ export class InactiveUserService {
     } finally {
       // Always persist what happened, even if the run was interrupted.
       fs.writeFileSync(resultsPath, JSON.stringify(buildResult(), null, 2));
-      console.log(`Purge results written to ${resultsPath}`);
+      log.info(`Purge results written to ${resultsPath}`);
     }
 
     return buildResult();
