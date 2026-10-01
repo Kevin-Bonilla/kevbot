@@ -51,7 +51,7 @@ function resolvePurgeRoleId(message: any): string | null {
 async function canPurge(message: any): Promise<boolean> {
   const roleId = resolvePurgeRoleId(message);
   if (!roleId) return false;
-  return !!message.member && message.member.roles.has(roleId);
+  return !!message.member && message.member.roles.cache.has(roleId);
 }
 
 /**

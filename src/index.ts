@@ -53,7 +53,13 @@ client.on('messageCreate', async (message) => {
     if (command.requiredChannelId && message.channel.id !== command.requiredChannelId) {
       return; // Ignore command if not in the correct channel
     }
-    await command.execute(message, client);
+    await command.execute(message, client).catch((err) => {
+      // A bug inside ONE command must never take the whole bot down:
+      // an unhandled throw/throw here historically crashed the client.
+      log.error(`Command ${command.name} failed:`, err);
+      message.reply(`Sorry, \`${command.name}\` hit an error: ${err instanceof Error ? err.message : String(err)}`)
+        .catch(() => {});
+    });
   }
 });
 
