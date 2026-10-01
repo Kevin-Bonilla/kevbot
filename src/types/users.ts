@@ -1,7 +1,6 @@
 export type UserRecord = {
   username: string;
   id: string;
-  lastActive: string | null;
 };
 
 export type KickOutcome = {

@@ -53,7 +53,7 @@ export class InactiveUserService {
 
     log.debug(`Cutoff date set to: ${cutoffDate.toISOString()}`);
 
-    const lastSeen = new Map<string, Date>();
+    const activeUsers = new Set<string>();
 
     const guild = client.guilds.cache.first();
     if (!guild) {
@@ -68,14 +68,17 @@ export class InactiveUserService {
 
     let completed = 0;
     for (const channel of channels) {
+      const channelLabel = channel.name || 'channel';
+      log.info(`[${completed + 1}/${channels.length}] starting scan of #${channelLabel} (${channel.id})`);
       if (!('messages' in channel) || typeof channel.messages.fetch !== 'function') {
-        log.warn(`Skipping channel ${channel.name || 'Unknown'} (ID: ${channel.id}) - messages.fetch unavailable`);
+        log.warn(`Skipping channel ${channelLabel} (ID: ${channel.id}) - messages.fetch unavailable`);
         continue;
       }
 
       try {
         let lastId: string | null = null;
         let messagesFromThisChannel = 0;
+        const channelStart = Date.now();
 
         while (true) {
           const messages: Collection<string, Message> = await channel.messages.fetch({
@@ -86,20 +89,27 @@ export class InactiveUserService {
           if (messages.size === 0) break;
 
           messagesFromThisChannel += messages.size;
+          const elapsed = ((Date.now() - channelStart) / 1000).toFixed(1);
+          log.info(`  [${channel.name}] page fetched — ${messagesFromThisChannel} msgs so far, ${elapsed}s in this channel`);
           for (const msg of messages.values()) {
-            if (!msg.author.bot) {
-              const currentLastSeen = lastSeen.get(msg.author.id);
-              if (!currentLastSeen || msg.createdAt > currentLastSeen) {
-                lastSeen.set(msg.author.id, msg.createdAt);
-              }
+            if (!msg.author.bot && msg.createdAt >= cutoffDate) {
+              activeUsers.add(msg.author.id);
             }
           }
 
-          const oldestMessageId: string | undefined = messages.last()?.id;
-          if (!oldestMessageId || messages.size < 100) break;
-          lastId = oldestMessageId;
+          const oldestMessage = messages.last();
+          if (!oldestMessage || messages.size < 100) break;
+          // Cutoff reached: everything older than this is irrelevant, stop paging.
+          if (oldestMessage.createdAt < cutoffDate) {
+            log.info(`  [${channel.name}] reached cutoff (oldest msg ${oldestMessage.createdAt.toISOString()}); stopping here`);
+            break;
+          }
+          lastId = oldestMessage.id;
+          // Brief pause between pages to stay well under the per-endpoint rate limit.
+          await new Promise((r) => setTimeout(r, 250));
         }
-        log.debug(`Scanned ${channel.name} (${channel.id}) — ${messagesFromThisChannel} messages`);
+        const totalElapsed = ((Date.now() - channelStart) / 1000).toFixed(1);
+        log.info(`✅ channel ${channel.name || channel.id} done — ${messagesFromThisChannel} messages in ${totalElapsed}s`);
       } catch (err) {
         log.error(`Error reading history for channel ${channel.name || channel.id}:`, err);
       }
@@ -108,21 +118,19 @@ export class InactiveUserService {
       onProgress?.(completed, channels.length, channel.name || 'channel');
     }
 
-    log.debug(`Total unique users found in messages: ${lastSeen.size}`);
+    log.info(`Unique users active within the last period: ${activeUsers.size}`);
 
     const members = await guild.members.fetch();
-    log.debug(`Total members in guild: ${members.size}`);
+    log.info(`Total members in guild: ${members.size}`);
 
     const inactiveUsers: UserRecord[] = [];
     for (const member of members.values()) {
       if (member.user.bot) continue;
 
-      const lastDate = lastSeen.get(member.id);
-      if (!lastDate || lastDate < cutoffDate) {
+      if (!activeUsers.has(member.id)) {
         inactiveUsers.push({
           username: member.user.username,
           id: member.id,
-          lastActive: lastDate?.toISOString() ?? null,
         });
       }
     }
