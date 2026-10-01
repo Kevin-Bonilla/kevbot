@@ -4,6 +4,8 @@ import {
   oopsieCommand, 
   displayOopsieCountCommand,
   purgeDryRunCommand,
+  purgeCommand,
+  purgeConfirmCommand,
   debugCommand,
   githubCommand,
 } from './commands/index';
@@ -25,6 +27,8 @@ const commands = [
   oopsieCommand, 
   displayOopsieCountCommand, 
   purgeDryRunCommand, 
+  purgeCommand,
+  purgeConfirmCommand,
   debugCommand, 
   githubCommand
 ];
