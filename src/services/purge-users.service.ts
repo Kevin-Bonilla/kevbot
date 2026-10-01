@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Client, Collection, Message } from 'discord.js';
-import { InactiveUser, KickOutcome, PurgeResult } from '../types/users';
+import { UserRecord, KickOutcome, PurgeResult } from '../types/users';
 
 const dataPath = path.resolve(__dirname, '../../data/inactive_users.json');
 const whitelistPath = path.resolve(__dirname, '../../data/whitelisted_users.json');
@@ -20,7 +20,7 @@ export class InactiveUserService {
    * @param client The Discord client instance
    * @returns List of inactive user objects
    */
-  static async scanInactiveUsers(client: Client): Promise<InactiveUser[]> {
+  static async scanInactiveUsers(client: Client): Promise<UserRecord[]> {
     console.log("Starting inactive user scan...");
     const cutoffDate = new Date();
     cutoffDate.setFullYear(cutoffDate.getFullYear() - 1);
@@ -81,7 +81,7 @@ export class InactiveUserService {
     const members = await guild.members.fetch();
     console.log(`Total members in guild: ${members.size}`);
 
-    const inactiveUsers: InactiveUser[] = [];
+    const inactiveUsers: UserRecord[] = [];
     for (const member of members.values()) {
       if (member.user.bot) continue;
 
@@ -114,14 +114,14 @@ export class InactiveUserService {
    * 
    * @returns List of Inactive Users
    */
-  static getInactiveUsers(): InactiveUser[] {
+  static getInactiveUsers(): UserRecord[] {
     if (!fs.existsSync(dataPath)) {
       console.warn("Inactive users data file does not exist. Please run the scan first.");
       return [];
     }
 
     const data = fs.readFileSync(dataPath, 'utf-8');
-    return JSON.parse(data) as InactiveUser[];
+    return JSON.parse(data) as UserRecord[];
   }
 
   /**
@@ -151,7 +151,7 @@ export class InactiveUserService {
    * 
    * @returns Kick targets plus a human-readable list of skipped (whitelisted) users
    */
-  static getTargetsToKick(): { targets: InactiveUser[]; skippedWhitelisted: string[] } {
+  static getTargetsToKick(): { targets: UserRecord[]; skippedWhitelisted: string[] } {
     const inactive = InactiveUserService.getInactiveUsers();
     const whitelist = new Set(InactiveUserService.getWhitelistedUserIds());
 

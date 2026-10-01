@@ -1,4 +1,4 @@
-export type InactiveUser = {
+export type UserRecord = {
   username: string;
   id: string;
   lastActive: string | null;
