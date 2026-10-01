@@ -12,6 +12,8 @@ const PURGE_REASON = 'Inactive for over a year (kevbot purge)';
 const KICK_INTERVAL_MS = 1500;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// TODO: extract this into an error file or module
 /**
  * Thrown when the whitelist file exists but cannot be read or parsed.
  * A corrupted whitelist must never be silently treated as empty: that would
