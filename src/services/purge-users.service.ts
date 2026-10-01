@@ -11,6 +11,23 @@ const PURGE_REASON = 'Inactive for over a year (kevbot purge)';
 const KICK_INTERVAL_MS = 1500;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+/**
+ * Thrown when the whitelist file exists but cannot be read or parsed.
+ * A corrupted whitelist must never be silently treated as empty: that would
+ * let the purge kick users a maintainer explicitly tried to protect.
+ */
+export class WhitelistMalformedError extends Error {
+  constructor(cause: unknown) {
+    super(
+      `The whitelist file (data/whitelisted_users.json) is present but could not be read. ` +
+      `Fix the file (it must be a JSON array of { "id": "..." } entries) or delete it; ` +
+      `the purge was aborted so no one is kicked by accident.`
+    );
+    this.name = 'WhitelistMalformedError';
+    if (cause instanceof Error) this.cause = cause;
+  }
+}
+
 export class InactiveUserService {
 
   /**
@@ -133,30 +150,37 @@ export class InactiveUserService {
    *     { "id": "987654321098765432" }
    *   ]
    * Bare id strings in the array are also accepted for convenience.
-   * A missing or malformed file yields an empty whitelist (nobody exempt).
+   * A missing file means an empty whitelist (nobody has declared protections).
    * 
+   * @throws WhitelistMalformedError If the file exists but cannot be read,
+   *   is not valid JSON, or is not an array. Callers must treat this as a
+   *   hard error and abort the purge.
    * @returns Array of whitelisted user IDs
    */
   static getWhitelistedUserIds(): string[] {
     if (!fs.existsSync(whitelistPath)) return [];
 
+    let parsed: unknown;
     try {
-      const parsed: unknown = JSON.parse(fs.readFileSync(whitelistPath, 'utf-8'));
-      if (!Array.isArray(parsed)) return [];
-      return parsed
-        .map((entry: unknown): string | null => {
-          if (typeof entry === 'string') return entry;
-          if (entry !== null && typeof entry === 'object'
-              && typeof (entry as Record<string, unknown>).id === 'string') {
-            return (entry as Record<string, unknown>).id as string;
-          }
-          return null;
-        })
-        .filter((id: string | null): id is string => id !== null && /^\d+$/.test(id));
+      parsed = JSON.parse(fs.readFileSync(whitelistPath, 'utf-8'));
     } catch (err) {
-      console.warn(`Failed to parse whitelist file; treating as empty.`, err);
-      return [];
+      throw new WhitelistMalformedError(err);
     }
+
+    if (!Array.isArray(parsed)) {
+      throw new WhitelistMalformedError('whitelist file is not a JSON array');
+    }
+
+    return parsed
+      .map((entry: unknown): string | null => {
+        if (typeof entry === 'string') return entry;
+        if (entry !== null && typeof entry === 'object'
+            && typeof (entry as Record<string, unknown>).id === 'string') {
+          return (entry as Record<string, unknown>).id as string;
+        }
+        return null;
+      })
+      .filter((id: string | null): id is string => id !== null && /^\d+$/.test(id));
   }
 
   /**

@@ -19,5 +19,8 @@
    in `data/whitelisted_users.json`, an array of `{ "id": "...", "note"?: "..." }`
    entries (bare id strings also accepted), e.g.
    `[ { "id": "123...", "note": "admin, don't kick" } ]`.
+   A missing file means nobody is exempt. A file that exists but cannot be
+   read (broken JSON, not an array) ABORTS the purge — it is never treated
+   as empty, so a broken whitelist can't accidentally unprotect someone.
    Discord only gets the kicked/failed counts; per-user results go to
    `data/purge_results.json`.

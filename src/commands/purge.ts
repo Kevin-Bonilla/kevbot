@@ -1,5 +1,5 @@
 import { Command } from '../types';
-import { InactiveUserService } from '../services/purge-users.service';
+import { InactiveUserService, WhitelistMalformedError } from '../services/purge-users.service';
 
 /**
  * Real purge commands.
@@ -83,7 +83,20 @@ export const purgeCommand: Command = {
       return;
     }
 
-    const { targets, skippedWhitelisted } = InactiveUserService.getTargetsToKick();
+    let targets;
+    let skippedWhitelisted: string[];
+    try {
+      ({ targets, skippedWhitelisted } = InactiveUserService.getTargetsToKick());
+    } catch (err) {
+      // Fail closed: if the whitelist file exists but is broken, never proceed
+      // with kicks — a maintainer may be relying on it to protect someone.
+      if (err instanceof WhitelistMalformedError) {
+        console.error('Purge aborted (malformed whitelist):', err);
+        await message.reply(`Purge aborted: ${err.message}`);
+        return;
+      }
+      throw err;
+    }
     if (targets.length === 0) {
       const detail = skippedWhitelisted.length
         ? `All ${skippedWhitelisted.length} scanned users are whitelisted.`
@@ -135,6 +148,12 @@ export const purgeConfirmCommand: Command = {
         `See ${RESULTS_FILE} for details.`
       );
     } catch (err) {
+      if (err instanceof WhitelistMalformedError) {
+        // Fail closed: no kicks were made; the whitelist needs fixing first.
+        console.error('Purge aborted (malformed whitelist):', err);
+        await message.reply(`Purge aborted, no one was kicked: ${err.message}`);
+        return;
+      }
       const errMsg = err instanceof Error ? err.message : String(err);
       console.error('Purge failed:', err);
       await message.reply(`Purge aborted: ${errMsg}. Partial results are in ${RESULTS_FILE}.`);
