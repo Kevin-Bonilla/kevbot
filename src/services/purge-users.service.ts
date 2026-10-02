@@ -3,13 +3,17 @@ import path from 'path';
 import { Client, Collection, Message, NewsChannel, PublicThreadChannel, TextChannel } from 'discord.js';
 import { UserRecord, KickOutcome, PurgeResult } from '../types/users';
 import { log } from '../logging/logger';
-import { WhitelistMalformedError } from '../errors';
+import { WhitelistMalformedError, BlacklistMalformedError } from '../errors';
 
 const dataPath = path.resolve(__dirname, '../../data/inactive_users.json');
 const whitelistPath = path.resolve(__dirname, '../../data/whitelisted_users.json');
+const blacklistPath = path.resolve(__dirname, '../../data/blacklisted_users.json');
 const resultsPath = path.resolve(__dirname, '../../data/purge_results.json');
 
 const PURGE_REASON = 'Inactive for over a year (kevbot purge)';
+// Blacklisted members are removed on the operator's instruction, not for
+// inactivity, so the audit reason has to say so in Discord's kick log.
+const BLACKLIST_PURGE_REASON = 'Blacklisted by a maintainer (kevbot purge)';
 const KICK_INTERVAL_MS = 1500;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -148,33 +152,42 @@ export class InactiveUserService {
   }
 
   /**
-   * Reads the whitelist of user IDs from data/whitelisted_users.json.
-   * Format: a JSON array of entries, each an object with a Discord user
-   * `id`, optionally carrying a free-form `note`:
-   *   [
-   *     { "id": "123456789012345678", "note": "admin, don't kick" },
-   *     { "id": "987654321098765432" }
-   *   ]
-   * Bare id strings in the array are also accepted for convenience.
-   * A missing file means an empty whitelist (nobody has declared protections).
-   * 
-   * @throws WhitelistMalformedError If the file exists but cannot be read,
-   *   is not valid JSON, or is not an array. Callers must treat this as a
-   *   hard error and abort the purge.
-   * @returns Array of whitelisted user IDs
+   * Shared reader for the whitelist and blacklist files. Both are a JSON
+   * array whose entries are either a bare Discord user ID string or an object
+   * with an `id` (and optionally a free-form `note`):
+   *   [ { "id": "123456789012345678", "note": "admin, don't kick" } ]
+   * A missing file means an empty list. A file that exists but cannot be read
+   * raises `makeError`, so each list fails closed with its own error type
+   * rather than one shared message.
+   *
+   * @param filePath - Path to the list file
+   * @param listName - Human-readable name used in the error message
+   * @returns The user IDs that parsed as numeric Discord snowflakes
    */
-  static getWhitelistedUserIds(): string[] {
-    if (!fs.existsSync(whitelistPath)) return [];
+  private static readUserIdList(filePath: string, listName: 'whitelist' | 'blacklist'): string[] {
+    if (!fs.existsSync(filePath)) return [];
+
+    const makeError = (cause?: unknown) =>
+      listName === 'whitelist'
+        ? new WhitelistMalformedError(cause)
+        : new BlacklistMalformedError(cause);
+
+    // A 0-byte file is what you get from `touch` or an interrupted write. It
+    // is not valid JSON, so it must abort like any other malformed list —
+    // treating it as empty would silently un-target a blacklisted user.
+    if (fs.statSync(filePath).size === 0) {
+      throw makeError(`${filePath} is empty`);
+    }
 
     let parsed: unknown;
     try {
-      parsed = JSON.parse(fs.readFileSync(whitelistPath, 'utf-8'));
+      parsed = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
     } catch (err) {
-      throw new WhitelistMalformedError(err);
+      throw makeError(err);
     }
 
     if (!Array.isArray(parsed)) {
-      throw new WhitelistMalformedError('whitelist file is not a JSON array');
+      throw makeError(`${listName} file is not a JSON array`);
     }
 
     return parsed
@@ -190,21 +203,110 @@ export class InactiveUserService {
   }
 
   /**
-   * Splits the scanned inactive users into kick targets and the ones skipped
-   * because they are whitelisted.
-   * 
-   * @returns Kick targets plus a human-readable list of skipped (whitelisted) users
+   * Reads the whitelist of user IDs from data/whitelisted_users.json.
+   * See {@link readUserIdList} for the accepted format. A missing file means
+   * an empty whitelist (nobody has declared protections).
+   *
+   * @throws WhitelistMalformedError If the file exists but cannot be read,
+   *   is empty, is not valid JSON, or is not an array. Callers must treat
+   *   this as a hard error and abort the purge.
+   * @returns Array of whitelisted user IDs
    */
-  static getTargetsToKick(): { targets: UserRecord[]; skippedWhitelisted: string[] } {
+  static getWhitelistedUserIds(): string[] {
+    return InactiveUserService.readUserIdList(whitelistPath, 'whitelist');
+  }
+
+  /**
+   * Reads the blacklist of user IDs from data/blacklisted_users.json.
+   * See {@link readUserIdList} for the accepted format. A missing file means
+   * an empty blacklist (nobody is force-targeted).
+   *
+   * Blacklisted users are kicked regardless of recent activity, and the
+   * blacklist overrides the whitelist. This is the only mechanism by which
+   * the purge can remove a member who has been active, so entries are held to
+   * the same fail-closed standard as the whitelist.
+   *
+   * @throws BlacklistMalformedError If the file exists but cannot be read,
+   *   is empty, is not valid JSON, or is not an array. Callers must treat
+   *   this as a hard error and abort the purge.
+   * @returns Array of blacklisted user IDs
+   */
+  static getBlacklistedUserIds(): string[] {
+    return InactiveUserService.readUserIdList(blacklistPath, 'blacklist');
+  }
+
+  /**
+   * Builds the final kick list: every scanned-inactive user except the
+   * whitelisted ones, PLUS every blacklisted user regardless of activity.
+   *
+   * Precedence, highest first:
+   *   1. Blacklist  — always a target, even if whitelisted or active.
+   *   2. Whitelist  — protects a user found inactive by the scan.
+   *   3. Scan       — everyone else the scan flagged.
+   *
+   * Blacklisted users who are not in the scan file still become targets; they
+   * are resolved against the guild at kick time for a real username, so a
+   * stale or wrong ID fails loudly in the results rather than silently
+   * matching a stranger.
+   *
+   * @returns Targets with their reason, whitelisted users skipped, blacklisted
+   *   targets, and any whitelist entries the blacklist overrode
+   */
+  static getTargetsToKick(): {
+    targets: UserRecord[];
+    skippedWhitelisted: string[];
+    blacklisted: string[];
+    whitelistOverrides: string[];
+  } {
     const inactive = InactiveUserService.getInactiveUsers();
     const whitelist = new Set(InactiveUserService.getWhitelistedUserIds());
+    const blacklist = new Set(InactiveUserService.getBlacklistedUserIds());
+    const inactiveIds = new Set(inactive.map((u) => u.id));
 
-    const targets = inactive.filter((u) => !whitelist.has(u.id));
     const skippedWhitelisted = inactive
-      .filter((u) => whitelist.has(u.id))
+      .filter((u) => whitelist.has(u.id) && !blacklist.has(u.id))
       .map((u) => `${u.username} (${u.id})`);
 
-    return { targets, skippedWhitelisted };
+    // Blacklist wins over the whitelist: an entry in both is an override, and
+    // it is reported rather than applied quietly.
+    const whitelistOverrides = [...whitelist]
+      .filter((id) => blacklist.has(id))
+      .map((id) => {
+        const known = inactive.find((u) => u.id === id);
+        return known ? `${known.username} (${id})` : id;
+      });
+
+    const targets: UserRecord[] = inactive
+      .filter((u) => !whitelist.has(u.id) || blacklist.has(u.id))
+      .map((u) => ({
+        ...u,
+        reason: blacklist.has(u.id) ? 'blacklisted' : 'inactive',
+      }));
+
+    // Blacklisted users the scan never flagged (i.e. they are active) are
+    // still targets. Username is unknown until the guild lookup, so mark it.
+    for (const id of blacklist) {
+      if (inactiveIds.has(id)) continue;
+      targets.push({ id, username: `unknown (${id})`, reason: 'blacklisted' });
+    }
+
+    return { targets, skippedWhitelisted, blacklisted: [...blacklist], whitelistOverrides };
+  }
+
+  /**
+   * Best-effort display name for a target, used for audit records on paths
+   * that skip the user. Blacklisted IDs that the scan never saw start life as
+   * an "unknown (id)" placeholder, so a skip would otherwise be logged against
+   * a placeholder rather than a person. Rejects if the member is not in the
+   * guild; callers fall back to the placeholder.
+   *
+   * @param guild - Guild to resolve against
+   * @param user - The target record
+   * @returns The live username
+   */
+  private static async describeMember(guild: any, user: UserRecord): Promise<string> {
+    const member = await guild.members.fetch(user.id);
+    return member.user.username;
   }
 
   /**
@@ -217,23 +319,42 @@ export class InactiveUserService {
    * @returns A summary of kicks, failures, and whitelisted users skipped
    */
   static async purgeInactiveUsers(client: Client): Promise<PurgeResult> {
-    const { targets, skippedWhitelisted } = InactiveUserService.getTargetsToKick();
+    const {
+      targets,
+      skippedWhitelisted,
+      blacklisted,
+      whitelistOverrides,
+    } = InactiveUserService.getTargetsToKick();
 
     const guild = client.guilds.cache.first();
     if (!guild) {
       throw new Error("No guild found. The bot may not be in a server.");
     }
 
-    log.info(`Purging ${targets.length} inactive users (${skippedWhitelisted.length} whitelisted skipped)...`);
+    if (whitelistOverrides.length) {
+      log.warn(
+        `Blacklist overrides ${whitelistOverrides.length} whitelist entr` +
+        `${whitelistOverrides.length === 1 ? 'y' : 'ies'}: ${whitelistOverrides.join(', ')}`
+      );
+    }
+
+    log.info(
+      `Purging ${targets.length} users ` +
+      `(${blacklisted.length} blacklisted, ${skippedWhitelisted.length} whitelisted skipped)...`
+    );
 
     const kicked: KickOutcome[] = [];
     const failed: KickOutcome[] = [];
+    const skippedUnkickable: string[] = [];
     const buildResult = (): PurgeResult => ({
       timestamp: new Date().toISOString(),
       totalTargets: targets.length,
       kicked,
       failed,
       whitelistedSkipped: skippedWhitelisted,
+      blacklisted,
+      whitelistOverrides,
+      skippedUnkickable,
     });
 
     try {
@@ -245,16 +366,45 @@ export class InactiveUserService {
           at: new Date().toISOString(),
         };
 
+        // A blacklisted ID is operator-supplied and the list is hand-edited,
+        // so a fat-fingered entry must not be able to kick the bot itself and
+        // take the whole purge down mid-run. Bots are skipped for the same
+        // reason: they are never inactive-member cleanup targets.
+        if (user.id === client.user?.id) {
+          // Best-effort name lookup so the audit trail says who it was, not
+          // the "unknown" placeholder a blacklisted ID starts with.
+          const label = await InactiveUserService.describeMember(guild, user)
+            .catch(() => user.username);
+          skippedUnkickable.push(`${label} (${user.id}) — is the bot itself`);
+          log.error(`Refusing to kick ${user.id}: it is this bot. Skipped.`);
+          continue;
+        }
+
         try {
           const member = await guild.members.fetch(user.id);
-          await member.kick(PURGE_REASON);
+
+          if (member.user.bot) {
+            skippedUnkickable.push(`${member.user.username} (${user.id}) — is a bot`);
+            log.warn(`Skipping ${member.user.username} (${user.id}): bot accounts are not purge targets.`);
+            continue;
+          }
+
+          // Prefer the live username over the scan file's or the "unknown"
+          // placeholder, so results and the audit trail are readable.
+          outcome.username = member.user.username;
+
+          await member.kick(
+            user.reason === 'blacklisted'
+              ? BLACKLIST_PURGE_REASON
+              : PURGE_REASON
+          );
           outcome.status = 'kicked';
           kicked.push(outcome);
-          log.info(`Kicked ${user.username} (${user.id})`);
+          log.info(`Kicked ${outcome.username} (${user.id}) — ${user.reason}`);
         } catch (err) {
           outcome.error = err instanceof Error ? err.message : String(err);
           failed.push(outcome);
-          log.error(`Failed to kick ${user.username} (${user.id}):`, outcome.error);
+          log.error(`Failed to kick ${outcome.username} (${user.id}):`, outcome.error);
         }
 
         await sleep(KICK_INTERVAL_MS);

@@ -1,7 +1,7 @@
 import { Command } from '../types';
 import { InactiveUserService } from '../services/purge-users.service';
 import { canPurge, replyNoPermission } from '../services/role-gate.service';
-import { WhitelistMalformedError } from '../errors';
+import { UserListMalformedError } from '../errors';
 import { log } from '../logging/logger';
 
 /**
@@ -43,19 +43,21 @@ export const purgeCommand: Command = {
       return;
     }
 
-    if (!InactiveUserService.hasScanData()) {
-      await message.reply('No scan data yet. Run `!purgeDryRun` first, then `!purge`.');
-      return;
-    }
-
+    // A scan is normally required, but not when the purge has work queued that
+    // does not depend on scanning activity. getTargetsToKick() reports zero
+    // targets on its own if there is genuinely nothing to do, so the explicit
+    // scan check is only a guard against a confusing empty first run.
     let targets;
     let skippedWhitelisted: string[];
     try {
       ({ targets, skippedWhitelisted } = InactiveUserService.getTargetsToKick());
     } catch (err) {
-      if (err instanceof WhitelistMalformedError) {
-        // Fail closed: a broken whitelist must never look like an empty one.
-        log.error('Purge aborted (malformed whitelist):', err);
+      if (err instanceof UserListMalformedError) {
+        // Fail closed: a broken user list must never look like an empty one.
+        // That would either unprotect someone or silently drop a kick the
+        // operator believes is queued. `detail` (which names the file) goes to
+        // the log; `message` is the sanitized version safe for the channel.
+        log.error('Purge aborted (malformed user list):', err.detail);
         await message.reply(`Purge aborted: ${err.message}`);
         return;
       }
@@ -64,16 +66,28 @@ export const purgeCommand: Command = {
     if (targets.length === 0) {
       const detail = skippedWhitelisted.length
         ? `All ${skippedWhitelisted.length} scanned users are whitelisted.`
-        : 'The scan found no inactive users.';
+        : 'The scan found no users to purge.';
+      // With no scan on record at all, point at the scan command rather than
+      // claiming the scan came up empty — it never ran.
+      if (!InactiveUserService.hasScanData()) {
+        await message.reply('Nothing to purge yet. Run `!purgeDryRun` first, then `!purge`.');
+        return;
+      }
       await message.reply(`Nothing to purge — ${detail}`);
       return;
     }
 
     pendingPurge = { userId: message.author.id, createdAt: Date.now() };
+
+    // Nothing here names the blacklist or distinguishes its targets from the
+    // scanned ones. The preview is a count plus a pointer to the audit trail;
+    // who is on which list is an operator concern that lives in
+    // data/purge_results.json and the log, not in a channel. The operator is
+    // still role-gated to reach this far.
     await message.reply(
       `Purge armed: ${targets.length} user${targets.length === 1 ? '' : 's'} will be kicked` +
       (skippedWhitelisted.length ? ` (${skippedWhitelisted.length} whitelisted skipped)` : '') +
-      `. Full list is in data/inactive_users.json. ` +
+      `. Details are recorded in ${RESULTS_FILE} after the run. ` +
       `Run \`!purge confirm\` within 60 seconds to proceed.`
     );
   },
@@ -112,19 +126,31 @@ export const purgeConfirmCommand: Command = {
 
     try {
       const result = await InactiveUserService.purgeInactiveUsers(client);
+      // Skipped entries are deliberately not enumerated here: they can only
+      // arise from a hand-edited list, and naming them in channel would leak
+      // both the fact and the contents of that list. The count plus the audit
+      // file is enough for the operator to investigate.
+      const skippedNote = result.skippedUnkickable.length
+        ? `, ${result.skippedUnkickable.length} skipped`
+        : '';
       await message.reply(
-        `Purge complete: ${result.kicked.length} kicked, ${result.failed.length} failed. ` +
-        `See ${RESULTS_FILE} for details.`
+        `Purge complete: ${result.kicked.length} kicked, ${result.failed.length} failed` +
+        `${skippedNote}. See ${RESULTS_FILE} for details.`
       );
     } catch (err) {
-      if (err instanceof WhitelistMalformedError) {
-        // Fail closed: no kicks made; the whitelist needs fixing first.
-        log.error('Purge aborted (malformed whitelist):', err);
+      if (err instanceof UserListMalformedError) {
+        // Fail closed: no kicks made; the list needs fixing first.
+        log.error('Purge aborted (malformed user list):', err.detail);
         await message.reply(`Purge aborted, no one was kicked: ${err.message}`);
         return;
       }
       log.error('Purge failed:', err);
-      await message.reply(`Purge aborted: ${err instanceof Error ? err.message : String(err)}. Partial results are in ${RESULTS_FILE}.`);
+      // Generic catch-all, so err.message is untrusted: it could come from a
+      // library or a list-parsing path and name a file we do not disclose in
+      // channel. Post a generic line and keep the real message in the log.
+      await message.reply(
+        `Purge aborted. Partial results are in ${RESULTS_FILE}; see the log for details.`
+      );
     }
   },
 };

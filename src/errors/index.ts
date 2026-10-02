@@ -13,4 +13,8 @@
  * through this barrel.
  */
 export { KevbotError } from './kevbot-error';
-export { WhitelistMalformedError } from './purge-errors';
+export {
+  UserListMalformedError,
+  WhitelistMalformedError,
+  BlacklistMalformedError,
+} from './purge-errors';
