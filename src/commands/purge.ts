@@ -26,6 +26,9 @@ let pendingPurge: PendingPurge | null = null;
  * Resolves the purge role ID from env config: PURGE_ROLE_ID if it exists in
  * the guild, otherwise a guild role matched (case-insensitive) by name via
  * PURGE_ROLE_NAME. Returns null when no valid role is configured.
+ * 
+ * @param message - The Discord message object
+ * @returns The ID of the purge role, or null if not found
  */
 function resolvePurgeRoleId(message: any): string | null {
   const guild = message.guild;
@@ -47,6 +50,9 @@ function resolvePurgeRoleId(message: any): string | null {
 
 /**
  * True when the message author holds the configured purge role.
+ * 
+ * @param message - The Discord message object
+ * @returns A promise that resolves to true if the author can purge, false otherwise
  */
 async function canPurge(message: any): Promise<boolean> {
   const roleId = resolvePurgeRoleId(message);
@@ -56,6 +62,9 @@ async function canPurge(message: any): Promise<boolean> {
 
 /**
  * Replies with a permission error tailored to the configured state.
+ * 
+ * @param message - The Discord message object
+ * @returns A promise that resolves when the reply has been sent
  */
 async function replyNoPermission(message: any): Promise<void> {
   if (process.env.PURGE_ROLE_ID || process.env.PURGE_ROLE_NAME) {
@@ -68,6 +77,11 @@ async function replyNoPermission(message: any): Promise<void> {
 /**
  * Arms the purge: shows how many users would be kicked and opens the
  * confirmation window.
+ * 
+ * @param name - The name of the command
+ * @param description - The description of the command
+ * @param requiredChannelId - The ID of the channel where this command can be executed
+ * @returns A promise that resolves when the command has been executed
  */
 export const purgeCommand: Command = {
   name: '!purge',
@@ -117,6 +131,11 @@ export const purgeCommand: Command = {
 
 /**
  * Confirms and executes the armed purge (same user, within 60 seconds).
+ * 
+ * @param name - The name of the command
+ * @param description - The description of the command
+ * @param requiredChannelId - The ID of the channel where this command can be executed
+ * @returns A promise that resolves when the command has been executed
  */
 export const purgeConfirmCommand: Command = {
   name: '!purge confirm',

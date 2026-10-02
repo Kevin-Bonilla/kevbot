@@ -1,5 +1,14 @@
 import { Command } from '../types';
 
+/**
+ * Command to debug bot status and permissions.
+ * Only available in kevins-ai-chamber.
+ *
+ * @param name - The name of the command
+ * @param description - The description of the command
+ * @param requiredChannelId - The ID of the channel where this command can be executed
+ * @returns A promise that resolves when the command has been executed
+ */
 export const debugCommand: Command = {
   name: '!debug',
   description: 'Debug bot status and permissions',
