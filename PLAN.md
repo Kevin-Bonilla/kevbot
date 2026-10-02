@@ -3,7 +3,7 @@
 ## Roadmap
 1. [x] Onboarding the bot to the server.
 2. [x] Implement Matthew Word Counter.
-3. [] Implement the purge
+3. [x] Implement the purge (dry run + real kick with whitelist and confirm step)
 
 ## Features
 ### Matthew Oopsie Counter
