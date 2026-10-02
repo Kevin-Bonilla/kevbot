@@ -1,6 +1,7 @@
 import { Command } from '../types';
-import { InactiveUserService, WhitelistMalformedError } from '../services/purge-users.service';
+import { InactiveUserService } from '../services/purge-users.service';
 import { canPurge, replyNoPermission } from '../services/role-gate.service';
+import { WhitelistMalformedError } from '../errors';
 import { log } from '../logging/logger';
 
 /**

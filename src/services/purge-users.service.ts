@@ -3,6 +3,7 @@ import path from 'path';
 import { Client, Collection, Message, NewsChannel, PublicThreadChannel, TextChannel } from 'discord.js';
 import { UserRecord, KickOutcome, PurgeResult } from '../types/users';
 import { log } from '../logging/logger';
+import { WhitelistMalformedError } from '../errors';
 
 const dataPath = path.resolve(__dirname, '../../data/inactive_users.json');
 const whitelistPath = path.resolve(__dirname, '../../data/whitelisted_users.json');
@@ -12,24 +13,6 @@ const PURGE_REASON = 'Inactive for over a year (kevbot purge)';
 const KICK_INTERVAL_MS = 1500;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-// TODO: extract this into an error file or module
-/**
- * Thrown when the whitelist file exists but cannot be read or parsed.
- * A corrupted whitelist must never be silently treated as empty: that would
- * let the purge kick users a maintainer explicitly tried to protect.
- */
-export class WhitelistMalformedError extends Error {
-  constructor(cause: unknown) {
-    super(
-      `The whitelist file (data/whitelisted_users.json) is present but could not be read. ` +
-      `Fix the file (it must be a JSON array of { "id": "..." } entries) or delete it; ` +
-      `the purge was aborted so no one is kicked by accident.`
-    );
-    this.name = 'WhitelistMalformedError';
-    if (cause instanceof Error) this.cause = cause;
-  }
-}
 
 export class InactiveUserService {
 
