@@ -1,9 +1,13 @@
 import { Command } from '../types';
 import { InactiveUserService } from '../services/purge-users.service';
+import { canPurge, replyNoPermission } from '../services/role-gate.service';
 
 /**
  * Command to scan for inactive users (dry run).
- * Only available in kevins-ai-chamber.
+ * Only available in kevins-ai-chamber, and only for the configured purge
+ * role — the same gate `!purge` uses (see services/role-gate.service).
+ * A full-history scan is minutes of API calls, so it is not something every
+ * member of the channel should be able to trigger on demand.
  *
  * Streams a live progress message ("Scanning 3 of 12 — #general") by
  * editing its initial reply, throttled to one edit per 2 seconds so a
@@ -26,6 +30,11 @@ export const purgeDryRunCommand: Command = {
   description: 'Scan for inactive users and display them',
   requiredChannelId: '1552121753692667977',
   execute: async (message, client) => {
+    if (!canPurge(message)) {
+      await replyNoPermission(message, '!purgeDryRun');
+      return;
+    }
+
     const status = await message.reply('🔍 Scanning channels for inactive users... this can take a while.');
 
     // Throttled progress updater: the scan fires one callback per channel;

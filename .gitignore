@@ -5,4 +5,5 @@ dist
 .DS_Store
 data/inactive_users.json
 data/whitelisted_users.json
+data/blacklisted_users.json
 data/purge_results.json

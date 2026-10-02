@@ -1,5 +1,6 @@
 import { Command } from '../types';
 import { InactiveUserService, WhitelistMalformedError } from '../services/purge-users.service';
+import { canPurge, replyNoPermission } from '../services/role-gate.service';
 import { log } from '../logging/logger';
 
 /**
@@ -21,58 +22,6 @@ const RESULTS_FILE = 'data/purge_results.json';
 
 type PendingPurge = { userId: string; createdAt: number };
 let pendingPurge: PendingPurge | null = null;
-
-/**
- * Resolves the purge role ID from env config: PURGE_ROLE_ID if it exists in
- * the guild, otherwise a guild role matched (case-insensitive) by name via
- * PURGE_ROLE_NAME. Returns null when no valid role is configured.
- * 
- * @param message - The Discord message object
- * @returns The ID of the purge role, or null if not found
- */
-function resolvePurgeRoleId(message: any): string | null {
-  const guild = message.guild;
-  if (!guild) return null;
-
-  const roleId = process.env.PURGE_ROLE_ID;
-  if (roleId && guild.roles.cache.has(roleId)) return roleId;
-
-  const roleName = process.env.PURGE_ROLE_NAME;
-  if (roleName) {
-    const role = guild.roles.cache.find(
-      (r: any) => r.name.toLowerCase() === roleName.trim().toLowerCase()
-    );
-    if (role) return role.id;
-  }
-
-  return null;
-}
-
-/**
- * True when the message author holds the configured purge role.
- * 
- * @param message - The Discord message object
- * @returns A promise that resolves to true if the author can purge, false otherwise
- */
-async function canPurge(message: any): Promise<boolean> {
-  const roleId = resolvePurgeRoleId(message);
-  if (!roleId) return false;
-  return !!message.member && message.member.roles.cache.has(roleId);
-}
-
-/**
- * Replies with a permission error tailored to the configured state.
- * 
- * @param message - The Discord message object
- * @returns A promise that resolves when the reply has been sent
- */
-async function replyNoPermission(message: any): Promise<void> {
-  if (process.env.PURGE_ROLE_ID || process.env.PURGE_ROLE_NAME) {
-    await message.reply('You need the purge role to use `!purge`.');
-  } else {
-    await message.reply('The purge role is not configured yet (set PURGE_ROLE_ID in .env).');
-  }
-}
 
 /**
  * Arms the purge: shows how many users would be kicked and opens the

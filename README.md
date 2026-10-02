@@ -16,7 +16,9 @@ A Discord bot built with Node.js and TypeScript.
 ## Environment
 Copy `.env.example` to `.env`. Key variables:
 - `DISCORD_TOKEN` — bot token (required).
-- `PURGE_ROLE_ID` / `PURGE_ROLE_NAME` — role gate for `!purge` / `!purge confirm`.
+- `PURGE_ROLE_ID` / `PURGE_ROLE_NAME` — role gate for `!purgeDryRun`, `!purge`
+  and `!purge confirm`. Shared by all three via `src/services/role-gate.service.ts`;
+  if neither resolves to a real guild role, all three stay disabled.
 - `LOG_LEVEL` — `debug | info | warn | error` (default `info`).
 - `LOG_FILE` — app log file, appended (default `logs/kevbot.log`).
 
