@@ -37,10 +37,24 @@ const commands = [
 /**
  * Event listener for when the bot is ready.
  */
-client.once('ready', () => {
+client.once('clientReady', () => {
   log.info(`Logged in as ${client.user?.tag}`);
   log.info('KEVBOT is ONLINE!');
 });
+
+/**
+ * A long-lived gateway connection will drop eventually — network blips, a
+ * Discord-side restart, an idle host. Without these, the process stays alive
+ * but permanently deaf, and the only symptom is a bot that stopped answering.
+ * discord.js reconnects and re-emits clientReady on its own; these handlers
+ * exist so the drop is visible in the log and a hard error is not silent.
+ */
+client.on('disconnect', () => log.warn('Gateway disconnected; reconnecting...'));
+client.on('reconnecting', () => log.info('Gateway reconnecting...'));
+client.on('error', (err) => log.error('Client error:', err));
+client.on('shardError', (err) => log.error('Shard error:', err));
+process.on('unhandledRejection', (err) => log.error('Unhandled promise rejection:', err));
+process.on('uncaughtException', (err) => log.error('Uncaught exception:', err));
 
 /**
  * Event listener for when a message is created in a channel.
@@ -69,3 +83,29 @@ if (TOKEN && TOKEN !== 'YOUR_TOKEN_HERE') {
 } else {
   log.error('Please provide a valid DISCORD_TOKEN in your .env file.');
 }
+
+/**
+ * Shut down cleanly on SIGTERM/SIGINT (systemd stop, Ctrl-C, container stop).
+ *
+ * Without this, `systemctl restart` kills the process mid-request: a running
+ * purge would lose its in-flight kicks without writing the results file, and
+ * the next run would start from a stale target list. destroy() closes the
+ * gateway and lets the process exit, which systemd's TimeoutStopSec allows for.
+ */
+let shuttingDown = false;
+async function shutdown(signal: string): Promise<void> {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  log.info(`Received ${signal}, shutting down...`);
+  try {
+    await client.destroy();
+    log.info('Gateway closed cleanly.');
+  } catch (err) {
+    log.error('Error during shutdown:', err);
+  }
+  // Give the logger a moment to flush the last line, then exit.
+  setTimeout(() => process.exit(0), 250).unref();
+}
+
+process.on('SIGTERM', () => void shutdown('SIGTERM'));
+process.on('SIGINT', () => void shutdown('SIGINT'));

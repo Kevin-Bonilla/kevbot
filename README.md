@@ -13,6 +13,27 @@ A Discord bot built with Node.js and TypeScript.
 - `npm run build`: Compiles the TypeScript source code into JavaScript.
 - `npm run start`: Runs the compiled production build.
 
+## Deployment (always-on)
+
+Oracle Always Free VM, Docker + systemd. On the VM:
+
+```bash
+bash deploy/setup-vm.sh
+```
+
+That clones the repo to `/opt/kevbot`, creates `data/` and `logs/`, builds the
+image, installs `deploy/kevbot.service`, and starts the bot with
+`Restart=always`. Operate it with `systemctl status kevbot`,
+`journalctl -u kevbot -f`, and `sudo systemctl restart kevbot`.
+
+Secrets and the user lists are gitignored, so they exist only on the VM:
+`.env` (token, purge role), `data/whitelisted_users.json`, and
+`data/blacklisted_users.json`. Copy them onto a new machine by hand.
+
+The bot handles `SIGTERM`/`SIGINT` for a clean gateway shutdown, and logs
+disconnects and unhandled rejections so a dead connection is visible in the
+journal instead of silent.
+
 ## Environment
 Copy `.env.example` to `.env`. Key variables:
 - `DISCORD_TOKEN` — bot token (required).
