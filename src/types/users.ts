@@ -2,9 +2,14 @@ export type UserRecord = {
   username: string;
   id: string;
   /**
-   * Why this user is a target. 'inactive' = caught by the activity scan;
-   * 'blacklisted' = explicitly listed in data/blacklisted_users.json and
-   * kicked regardless of activity.
+   * Why this user is a target.
+   *
+   * Currently always 'inactive': the distinction between scan-detected and
+   * blacklisted targets is deliberately not surfaced, because the kick audit
+   * reason and this field both end up readable outside the bot. The two
+   * sources are still recoverable from PurgeResult.blacklisted. 'blacklisted'
+   * is kept in the union so that distinction can be restored without
+   * reshaping the type.
    */
   reason?: TargetReason;
 };
@@ -28,6 +33,8 @@ export type PurgeResult = {
   /**
    * Blacklisted users pulled in even though the scan found them active or
    * found them at all — the only reason a purge can remove an active member.
+   * This is the operator-facing record of which targets came from which list,
+   * now that UserRecord.reason does not distinguish them.
    */
   blacklisted: string[];
   /**

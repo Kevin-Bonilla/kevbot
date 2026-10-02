@@ -11,9 +11,6 @@ const blacklistPath = path.resolve(__dirname, '../../data/blacklisted_users.json
 const resultsPath = path.resolve(__dirname, '../../data/purge_results.json');
 
 const PURGE_REASON = 'Inactive for over a year (kevbot purge)';
-// Blacklisted members are removed on the operator's instruction, not for
-// inactivity, so the audit reason has to say so in Discord's kick log.
-const BLACKLIST_PURGE_REASON = 'Blacklisted by a maintainer (kevbot purge)';
 const KICK_INTERVAL_MS = 1500;
 
 const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -278,16 +275,13 @@ export class InactiveUserService {
 
     const targets: UserRecord[] = inactive
       .filter((u) => !whitelist.has(u.id) || blacklist.has(u.id))
-      .map((u) => ({
-        ...u,
-        reason: blacklist.has(u.id) ? 'blacklisted' : 'inactive',
-      }));
+      .map((u) => ({ ...u, reason: 'inactive' }));
 
     // Blacklisted users the scan never flagged (i.e. they are active) are
     // still targets. Username is unknown until the guild lookup, so mark it.
     for (const id of blacklist) {
       if (inactiveIds.has(id)) continue;
-      targets.push({ id, username: `unknown (${id})`, reason: 'blacklisted' });
+      targets.push({ id, username: `unknown (${id})`, reason: 'inactive' });
     }
 
     return { targets, skippedWhitelisted, blacklisted: [...blacklist], whitelistOverrides };
@@ -393,14 +387,14 @@ export class InactiveUserService {
           // placeholder, so results and the audit trail are readable.
           outcome.username = member.user.username;
 
-          await member.kick(
-            user.reason === 'blacklisted'
-              ? BLACKLIST_PURGE_REASON
-              : PURGE_REASON
-          );
+          // One audit reason for every kick, regardless of which list the
+          // target came from. The kick reason is visible in Discord's own
+          // audit log, so a per-list reason here would identify blacklisted
+          // members to anyone who can read it.
+          await member.kick(PURGE_REASON);
           outcome.status = 'kicked';
           kicked.push(outcome);
-          log.info(`Kicked ${outcome.username} (${user.id}) — ${user.reason}`);
+          log.info(`Kicked ${outcome.username} (${user.id})`);
         } catch (err) {
           outcome.error = err instanceof Error ? err.message : String(err);
           failed.push(outcome);

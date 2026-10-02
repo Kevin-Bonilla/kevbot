@@ -54,3 +54,9 @@ Never kicked, recorded under `skippedUnkickable` in the results: the bot
 itself (a fat-fingered ID must not make the bot disconnect mid-purge), other
 bot accounts, and IDs not in the guild (recorded as a failure instead, so a
 stale ID is visible rather than silently ignored).
+
+Every kick uses the same audit reason ("Inactive for over a year") and targets
+carry `reason: 'inactive'`, so which list a member came from is not
+distinguishable from the kick log or the per-user results. The `blacklisted`
+and `whitelistOverrides` arrays in `data/purge_results.json` remain the
+record of that split.
