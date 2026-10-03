@@ -1,13 +1,25 @@
+# Build context exclusions.
+#
+# Rule of thumb: exclude anything the IMAGE does not need, and nothing the
+# Dockerfile COPYs. Excluding a path that a COPY references makes the build
+# fail with `"/<path>": not found` rather than skipping it, so every entry here
+# must be cross-checked against the Dockerfile.
+
+# Installed by `npm ci` inside the build stage; shipping the host's copy would
+# be wrong (wrong platform, and it bloats the context).
 node_modules
+# Rebuilt from src by `npm run build`.
 dist
 logs
-# NOT excluding data/ — the Dockerfile copies data/counter.json so the image
-# can start. A fresh clone contains only that file; the whitelist/blacklist are
-# gitignored (so never present) and /app/data is a volume mount at runtime.
+*.log
+
+# Secrets. .env is never in a clone, but exclude it explicitly so a local
+# build can never bake a token into a layer.
 .env
 .env.*
 !.env.example
-*.log
+
+# Repo metadata and docs: not needed to build or run.
 .git
 .gitignore
 .DS_Store
@@ -15,4 +27,10 @@ Dockerfile
 .dockerignore
 README.md
 PLAN.md
-src
+deploy
+
+# NOT excluded, because the Dockerfile copies them:
+#   src/                      — the build stage compiles it (build 6/8)
+#   data/counter.json         — seeds the counter so the image can start
+# The whitelist and blacklist are gitignored, so they are never in the context;
+# they arrive at runtime through the /app/data volume mount instead.
