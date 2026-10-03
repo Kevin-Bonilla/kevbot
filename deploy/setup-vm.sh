@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/kevbot}"
 REPO_URL="${REPO_URL:-https://github.com/Kevin-Bonilla/kevbot.git}"
-BRANCH="${BRANCH:-cloud-onboarding}"
+BRANCH="${BRANCH:-main}"
 
 say() { printf '\n\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
