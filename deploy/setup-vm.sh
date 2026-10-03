@@ -15,7 +15,22 @@ die() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 say "Checking prerequisites"
 command -v docker >/dev/null || die "docker not found. On Oracle Linux/Ubuntu: install Docker, then re-run."
 command -v git   >/dev/null || die "git not found. Install it and re-run."
-docker info >/dev/null 2>&1 || die "docker is installed but the daemon isn't running. Try: sudo systemctl start docker"
+
+# Try to start the daemon if it is not already up. `docker info` is a poor
+# check here: it needs the docker group, which this session may not have yet,
+# so a stopped-but-fine daemon looks identical to a broken one. Start first,
+# then verify, and only complain if it is genuinely not running afterward.
+if ! docker ps >/dev/null 2>&1; then
+  say "docker daemon not responding, attempting start"
+  sudo systemctl enable --now docker >/dev/null 2>&1 || true
+  sleep 3
+fi
+if ! docker ps >/dev/null 2>&1; then
+  # Last resort: use sudo for the rest of this run rather than dying, since the
+  # daemon may be healthy and only the group membership is missing.
+  sudo -n docker ps >/dev/null 2>&1 || die "docker daemon is not running. Check: sudo systemctl status docker"
+  say "docker requires sudo in this session; continuing (group may need a new login)"
+fi
 
 say "Creating $APP_DIR"
 sudo mkdir -p "$APP_DIR/data" "$APP_DIR/logs"
