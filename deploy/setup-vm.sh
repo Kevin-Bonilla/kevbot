@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_DIR="${APP_DIR:-/opt/kevbot}"
 REPO_URL="${REPO_URL:-https://github.com/Kevin-Bonilla/kevbot.git}"
-BRANCH="${BRANCH:-feature-1-purge}"
+BRANCH="${BRANCH:-cloud-onboarding}"
 
 say() { printf '\n\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -43,11 +43,24 @@ if [ -d "$APP_DIR/.git" ]; then
   git -C "$APP_DIR" checkout "$BRANCH"
   git -C "$APP_DIR" pull --ff-only
 else
+  # APP_DIR already exists (we created data/ and logs/ above), and `git clone`
+  # refuses a non-empty destination. Clone into a staging dir and move the
+  # repository in, leaving data/ and logs/ untouched.
   say "Cloning $REPO_URL ($BRANCH) into $APP_DIR"
   # The repo may be private; if so, use a deploy key or a PAT in the URL
   # rather than committing a token to this script.
-  git clone --branch "$BRANCH" "$REPO_URL" "$APP_DIR"
+  STAGE="$(mktemp -d)"
+  git clone --branch "$BRANCH" "$REPO_URL" "$STAGE/repo"
+  shopt -s dotglob nullglob
+  mv "$STAGE/repo"/* "$APP_DIR"/
+  shopt -u dotglob nullglob
+  rm -rf "$STAGE"
 fi
+
+# Sanity-check that the deploy files actually arrived. A wrong branch or a
+# silent clone failure used to sail through until the systemd step failed.
+[ -f "$APP_DIR/Dockerfile" ] || die "Dockerfile missing in $APP_DIR - wrong branch?"
+[ -f "$APP_DIR/deploy/kevbot.service" ] || die "deploy/kevbot.service missing - wrong branch?"
 
 # --- Secrets ---
 # .env is gitignored, so it is never cloned. It must be created by hand.
