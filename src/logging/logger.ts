@@ -38,6 +38,8 @@ const CONSOLE_METHODS: Record<LogLevel, (line: string) => void> = {
 class Logger {
   // Directory of the currently-active log file; we only mkdir when it changes.
   private activeDir: string | null = null;
+  // One-shot flag so a permanently unwritable log file cannot flood the console.
+  private static warnedAboutFile = false;
 
   debug(...args: unknown[]): void { this.write('debug', args); }
   info(...args: unknown[]): void { this.write('info', args); }
@@ -56,7 +58,7 @@ class Logger {
 
     CONSOLE_METHODS[level](line);
 
-    let filePath: string;
+    let filePath = '<unresolved>';
     try {
       filePath = Logger.logFilePath();
       const dir = path.dirname(filePath);
@@ -66,7 +68,17 @@ class Logger {
       }
       fs.appendFileSync(filePath, line + '\n');
     } catch (err) {
-      console.error('[logger] failed to write log file:', err);
+      // A broken log file must not take the bot down, and must not spam the
+      // console on every single line. Warn once with the cause (usually a
+      // permissions problem on a mounted volume) then stay quiet.
+      if (!Logger.warnedAboutFile) {
+        Logger.warnedAboutFile = true;
+        console.error(
+          `[logger] cannot write log file (${filePath}): ` +
+          `${err instanceof Error ? err.message : String(err)}. ` +
+          'Continuing without the file log; see stdout/journald.'
+        );
+      }
     }
   }
 

@@ -27,6 +27,10 @@ StartLimitIntervalSec=300
 StartLimitBurst=5
 
 WorkingDirectory=/opt/kevbot
+# The container runs as uid 1000 (`node`) but these host dirs are owned by the
+# ubuntu user, so an EACCES on the log file was the first symptom. Own them to
+# 1000:1000 before docker starts; without this the bot logs EACCES and exits.
+ExecStartPre=/usr/bin/chown -R 1000:1000 /opt/kevbot/data /opt/kevbot/logs
 EnvironmentFile=/opt/kevbot/.env
 Environment=NODE_ENV=production
 # Keep the container's logs in the journal, not just inside the container.
