@@ -1,7 +1,9 @@
 node_modules
 dist
-data
 logs
+# NOT excluding data/ — the Dockerfile copies data/counter.json so the image
+# can start. A fresh clone contains only that file; the whitelist/blacklist are
+# gitignored (so never present) and /app/data is a volume mount at runtime.
 .env
 .env.*
 !.env.example

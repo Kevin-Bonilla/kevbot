@@ -27,9 +27,11 @@ ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package.json ./package.json
-# counter.json is the only tracked file in data/; the list files are
-# gitignored on purpose and are mounted in at runtime.
-COPY data ./data
+# counter.json is the only tracked file in data/; the whitelist and blacklist
+# are gitignored on purpose and arrive via the /app/data volume mount. Copy the
+# one file we need rather than the whole dir, so the build cannot break if data/
+# is ever empty in the clone context.
+COPY data/counter.json ./data/counter.json
 
 # Run unprivileged. The node image already provides this user.
 USER node
