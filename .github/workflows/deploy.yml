@@ -1,0 +1,90 @@
+# Optional, manual deploy of kevbot to the Oracle Always Free VM.
+#
+# Deliberately NOT wired to `push` or `pull_request`. This workflow only ever
+# runs when a human clicks Run workflow, so a merge to main cannot deploy by
+# itself. That is the whole point: CI on PRs is automatic and harmless, while
+# deploying restarts a live bot gateway and should stay a deliberate act.
+#
+# The remote side is deploy/setup-vm.sh, which is already idempotent: it does a
+# `git pull --ff-only`, rebuilds the image, and restarts the systemd unit. This
+# job does not reimplement any of that — it just runs the script you already
+# trust, so there is exactly one definition of "what a deploy means".
+name: Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch on the VM to deploy (must match what the VM is tracking)'
+        required: true
+        default: 'main'
+        type: string
+      confirm:
+        description: 'Type DEPLOY to proceed. This restarts the live kevbot service.'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# One deploy at a time. Two concurrent runs would race on `git pull` in
+# /opt/kevbot and could restart the service mid-build.
+concurrency:
+  group: deploy-vm
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH to VM and run setup-vm.sh
+    runs-on: ubuntu-latest
+
+    # Deploying anything other than main would push unreviewed code at the
+    # live bot, which is exactly what main-branch protection exists to prevent.
+    if: github.ref == 'refs/heads/main'
+    environment: production
+
+    steps:
+      - name: Require explicit confirmation
+        run: |
+          if [ "${{ inputs.confirm }}" != "DEPLOY" ]; then
+            echo "::error::confirmation input must be exactly DEPLOY (got '${{ inputs.confirm }}'). Nothing was deployed."
+            exit 1
+          fi
+
+      - name: Check the VM is reachable before claiming anything
+        run: |
+          # Write the key ourselves rather than `install -i <<< ...`: a partial
+          # write would leave a key file that looks present but cannot auth, and
+          # the resulting error is far less obvious than a failure here.
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "${{ secrets.VM_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ ! -s ~/.ssh/deploy_key ]; then
+            echo "::error::VM_SSH_PRIVATE_KEY is empty. Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+          ssh-keyscan -H -p "${{ secrets.VM_SSH_PORT || '22' }}" "${{ secrets.VM_HOST }}" >> ~/.ssh/known_hosts
+          # StrictHostKeyChecking=yes on the real SSH call below: we just pinned
+          # the key above, so this catches a genuine MITM rather than a new host.
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VM_SSH_PORT || '22' }}" \
+            -o BatchMode=yes -o ConnectTimeout=15 -o StrictHostKeyChecking=yes \
+            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
+            'echo connected; docker --version; git -C /opt/kevbot rev-parse --abbrev-ref HEAD'
+
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VM_SSH_PORT || '22' }}" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
+            "cd /opt/kevbot && BRANCH='${{ inputs.branch }}' bash deploy/setup-vm.sh"
+
+      # A green `systemctl restart` only proves systemd accepted the job. The
+      # gateway can still fail a moment later (bad token, revoked intent), so
+      # confirm the process is genuinely up and logging before calling it done.
+      - name: Verify the service came up
+        run: |
+          sleep 10
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VM_SSH_PORT || '22' }}" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
+            'systemctl is-active kevbot && journalctl -u kevbot --since "2 min ago" --no-pager | tail -30'

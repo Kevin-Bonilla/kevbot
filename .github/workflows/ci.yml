@@ -1,0 +1,82 @@
+# CI for kevbot.
+#
+# Runs on every PR and on pushes to main. Three gates, in the order they
+# fail cheapest-first:
+#   1. install  — npm ci is the slow part; fail fast on a broken lockfile
+#   2. typecheck — tsc --noEmit, the real diagnostic source for this repo
+#   3. build     — the same compile the Dockerfile runs, via npm run build
+#   4. docker    — proves the image still builds, which catches breakage that
+#                  a bare tsc run cannot (COPY paths, .dockerignore drift)
+#
+# Node is pinned to 22 because the Dockerfile builds on node:22-alpine. A CI
+# green on a different major than production ships is a lie, so keep these in sync.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# A new push to the same branch cancels the in-flight run. On a PR this keeps
+# the check tied to the latest commit instead of letting stale runs pile up.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, build, and image
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Build
+        run: npm run build
+
+      - name: Build Docker image
+        run: docker build -t kevbot:ci .
+
+      # Smoke-test the image without a Discord token: it must start, then fail
+      # cleanly on the missing DISCORD_TOKEN rather than crash on a bad import
+      # or a missing data/ file. A non-zero exit is the EXPECTED outcome here,
+      # so we assert on the shape of the failure, not on the exit code.
+      - name: Smoke-test image starts and fails only on the missing token
+        run: |
+          set +e
+          output=$(timeout 20 docker run --rm -e DISCORD_TOKEN= kevbot:ci 2>&1)
+          code=$?
+          set -e
+          echo "$output"
+
+          # 124 = still running at the timeout, i.e. it got past startup and
+          # was sitting in the gateway connect loop. That is a pass.
+          if [ "$code" = "124" ]; then
+            echo "Image stayed up for 20s with no token; startup is sound."
+            exit 0
+          fi
+
+          # Anything else must be the token error specifically. A module-load or
+          # ENOENT failure here is a real regression.
+          if echo "$output" | grep -qi "DISCORD_TOKEN"; then
+            echo "Failed exactly as expected: no token configured."
+            exit 0
+          fi
+
+          echo "::error::Image failed for an unexpected reason (exit $code)."
+          exit 1
