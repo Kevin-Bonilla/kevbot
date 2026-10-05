@@ -29,6 +29,11 @@ README.md
 PLAN.md
 deploy
 
+# Tests are a CI-only concern. The image never runs them, and shipping them
+# would pull vitest into the build context for no runtime benefit.
+tests
+vitest.config.mts
+
 # NOT excluded, because the Dockerfile copies them:
 #   src/                      — the build stage compiles it (build 6/8)
 #   data/counter.json         — seeds the counter so the image can start

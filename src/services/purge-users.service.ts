@@ -5,10 +5,19 @@ import { UserRecord, KickOutcome, PurgeResult } from '../types/users';
 import { log } from '../logging/logger';
 import { WhitelistMalformedError, BlacklistMalformedError } from '../errors';
 
-const dataPath = path.resolve(__dirname, '../../data/inactive_users.json');
-const whitelistPath = path.resolve(__dirname, '../../data/whitelisted_users.json');
-const blacklistPath = path.resolve(__dirname, '../../data/blacklisted_users.json');
-const resultsPath = path.resolve(__dirname, '../../data/purge_results.json');
+// The data directory is overridable so tests can point at a temp dir instead of
+// the real data/. These are FUNCTIONS, not module-level consts, precisely so the
+// env var is read on every call: a test can set KEVBOT_DATA_DIR in beforeEach and
+// get a clean slate per case, even though the module was imported at the top of
+// the test file. A module-level const would capture the value once at import and
+// silently point every case back at the real data/ directory.
+const dataPath = (file: string): string =>
+  path.join(
+    process.env.KEVBOT_DATA_DIR
+      ? path.resolve(process.env.KEVBOT_DATA_DIR)
+      : path.resolve(__dirname, '../../data'),
+    file
+  );
 
 const PURGE_REASON = 'Inactive for over a year (kevbot purge)';
 const KICK_INTERVAL_MS = 1500;
@@ -119,8 +128,8 @@ export class InactiveUserService {
       }
     }
 
-    log.info(`Dry-run scan complete: ${inactiveUsers.length} inactive, results in ${dataPath}`);
-    fs.writeFileSync(dataPath, JSON.stringify(inactiveUsers, null, 2));
+    log.info(`Dry-run scan complete: ${inactiveUsers.length} inactive, results in ${dataPath('inactive_users.json')}`);
+    fs.writeFileSync(dataPath('inactive_users.json'), JSON.stringify(inactiveUsers, null, 2));
     return inactiveUsers;
   }
 
@@ -130,7 +139,7 @@ export class InactiveUserService {
    * @returns Whether scan data is available
    */
   static hasScanData(): boolean {
-    return fs.existsSync(dataPath);
+    return fs.existsSync(dataPath('inactive_users.json'));
   }
 
   /**
@@ -139,12 +148,12 @@ export class InactiveUserService {
    * @returns List of Inactive Users
    */
   static getInactiveUsers(): UserRecord[] {
-    if (!fs.existsSync(dataPath)) {
+    if (!fs.existsSync(dataPath('inactive_users.json'))) {
       log.warn("Inactive users data file does not exist. Please run the scan first.");
       return [];
     }
 
-    const data = fs.readFileSync(dataPath, 'utf-8');
+    const data = fs.readFileSync(dataPath('inactive_users.json'), 'utf-8');
     return JSON.parse(data) as UserRecord[];
   }
 
@@ -210,7 +219,7 @@ export class InactiveUserService {
    * @returns Array of whitelisted user IDs
    */
   static getWhitelistedUserIds(): string[] {
-    return InactiveUserService.readUserIdList(whitelistPath, 'whitelist');
+    return InactiveUserService.readUserIdList(dataPath('whitelisted_users.json'), 'whitelist');
   }
 
   /**
@@ -229,7 +238,7 @@ export class InactiveUserService {
    * @returns Array of blacklisted user IDs
    */
   static getBlacklistedUserIds(): string[] {
-    return InactiveUserService.readUserIdList(blacklistPath, 'blacklist');
+    return InactiveUserService.readUserIdList(dataPath('blacklisted_users.json'), 'blacklist');
   }
 
   /**
@@ -405,8 +414,8 @@ export class InactiveUserService {
       }
     } finally {
       // Always persist what happened, even if the run was interrupted.
-      fs.writeFileSync(resultsPath, JSON.stringify(buildResult(), null, 2));
-      log.info(`Purge results written to ${resultsPath}`);
+      fs.writeFileSync(dataPath('purge_results.json'), JSON.stringify(buildResult(), null, 2));
+      log.info(`Purge results written to ${dataPath('purge_results.json')}`);
     }
 
     return buildResult();
