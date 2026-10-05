@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { InactiveUserService } from '../src/services/purge-users.service';
-import { WhitelistMalformedError, BlacklistMalformedError } from '../src/errors';
+import { InactiveUserService } from '../../src/services/purge-users.service';
+import { WhitelistMalformedError, BlacklistMalformedError } from '../../src/errors';
 
 /**
  * Tests for the pure, decision-making half of the purge: who ends up on the
