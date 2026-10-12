@@ -128,6 +128,22 @@ else
   echo "    kevbot:latest"
 fi
 
+# --- OCI Logging (optional) ---
+# Install the OCI CLI and the Unified Monitoring (logging) agent, then configure
+# the agent to collect journald logs from the kevbot service.
+# Set SKIP_OCI_SETUP=1 to skip this step (e.g. if you manage logging
+# separately or are not on OCI).
+if [ -z "${SKIP_OCI_SETUP:-}" ]; then
+  say "Installing OCI CLI and logging agent"
+  if [ -f "$APP_DIR/deploy/oci-setup.sh" ]; then
+    bash "$APP_DIR/deploy/oci-setup.sh" || say "WARNING: oci-setup.sh failed; kevbot is still running, just without OCI log forwarding."
+  else
+    say "oci-setup.sh not found; skipping OCI logging setup."
+  fi
+else
+  say "Skipping OCI setup (SKIP_OCI_SETUP is set)."
+fi
+
 cat <<'EOF'
 
 Done. Useful commands:
@@ -139,4 +155,8 @@ Done. Useful commands:
 Note: .env, data/whitelisted_users.json and data/blacklisted_users.json are
 gitignored, so they live only on this VM. Back them up if this box is
 disposable — Oracle's free tier can be reclaimed if an account is idle.
+
+OCI Logging (if setup completed):
+  oci logging log list --compartment-id <your-compartment-ocid>
+  View logs in the OCI Console: Observability > Logging > Logs
 EOF

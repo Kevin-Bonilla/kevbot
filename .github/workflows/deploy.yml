@@ -88,3 +88,12 @@ jobs:
             -o BatchMode=yes -o StrictHostKeyChecking=yes \
             "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
             'systemctl is-active kevbot && journalctl -u kevbot --since "2 min ago" --no-pager | tail -30'
+
+      # Confirm the OCI Logging agent is reporting so you can monitor logs
+      # from the console. (Only if oci-setup.sh ran during setup-vm.sh.)
+      - name: Verify OCI logging agent is running
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VM_SSH_PORT || '22' }}" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
+            'systemctl is-active oracle-cloud-agent || echo "oci agent not found - run deploy/oci-setup.sh manually"' || true
