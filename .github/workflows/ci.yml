@@ -46,6 +46,12 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit -p tsconfig.json
 
+      # tsconfig.json excludes tests, so the suite is transpiled but never
+      # typechecked by the step above. A wrong helper signature or a stale
+      # assertion type would otherwise only surface as a runtime failure.
+      - name: Typecheck tests
+        run: npx tsc -p tsconfig.tests.json
+
       - name: Unit tests
         run: npm test
 
@@ -111,3 +117,24 @@ jobs:
 
       - name: Validate
         run: terraform validate -no-color
+
+  # The two shell scripts are the parts most likely to be debugged on the VM at
+  # an inconvenient hour, and nothing else exercises them: setup-vm.sh needs a
+  # VM and check-agent.sh needs instance metadata. ShellCheck is static, so it
+  # runs on every PR. It ships on the GitHub-hosted Ubuntu image; the install is
+  # a fallback for the day that changes.
+  scripts:
+    name: Lint shell scripts
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ShellCheck
+        run: |
+          command -v shellcheck >/dev/null 2>&1 || {
+            sudo apt-get update -qq
+            sudo apt-get install -y shellcheck
+          }
+          shellcheck --version
+          shellcheck -S warning deploy/setup-vm.sh deploy/oci-logging/check-agent.sh

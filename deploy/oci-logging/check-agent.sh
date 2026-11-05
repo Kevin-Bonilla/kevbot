@@ -58,9 +58,12 @@ else
   ok "$LOG_FILE exists and is readable"
   note "size: $(wc -c < "$LOG_FILE" | tr -d ' ') bytes, mode: $(stat -c '%a %U:%G' "$LOG_FILE" 2>/dev/null || echo '?')"
 
-  last_line="$(tail -n 1 "$LOG_FILE" 2>/dev/null)"
+  # Ignore canary records written by --emit-test (pid 0). They are always JSON,
+  # so counting one would make a text-mode bot look like a JSON-mode one and
+  # produce a false "LOG_FORMAT disagrees" warning on the next run.
+  last_line="$(tail -n 20 "$LOG_FILE" 2>/dev/null | grep -v '"pid":0' | tail -n 1)"
   if [[ -z "$last_line" ]]; then
-    warn "file is empty — nothing for the agent to ship yet"
+    warn "no bot log lines yet (file empty, or only --emit-test canaries)"
   elif [[ "$last_line" == \{* ]]; then
     ok "last line is JSON (matches the JSON parser in the agent config)"
   else
