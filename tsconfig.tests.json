@@ -1,0 +1,12 @@
+{
+  // Typecheck-only config for the test suite. tsconfig.json deliberately
+  // excludes tests so `npm run build` never emits them; this one exists so CI
+  // can prove the tests are type-correct instead of only transpiling them.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "rootDir": "."
+  },
+  "include": ["src/**/*", "tests/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

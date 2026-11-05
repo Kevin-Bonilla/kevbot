@@ -7,3 +7,11 @@ data/inactive_users.json
 data/whitelisted_users.json
 data/blacklisted_users.json
 data/purge_results.json
+
+# Terraform (deploy/tf): state files carry resource identifiers and are
+# machine-specific. Never commit them; .terraform.lock.hcl SHOULD be committed.
+deploy/tf/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log

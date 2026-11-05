@@ -1,6 +1,6 @@
 import { Client, GatewayIntentBits } from 'discord.js';
 import dotenv from 'dotenv';
-import { log } from './logging/logger';
+import { log, logTarget } from './logging/logger';
 import { 
   oopsieCommand, 
   displayOopsieCountCommand,
@@ -12,6 +12,19 @@ import {
 } from './commands/index';
 
 dotenv.config();
+
+/**
+ * Record the effective logging setup before anything else can fail.
+ *
+ * On the Oracle VM the agent tails exactly this file (via the /app/logs bind
+ * mount), so if OCI shows no data, the first question is "is the bot writing
+ * where the agent is reading?" — this line answers it from the log itself,
+ * even when nobody can SSH in. Keep the format stable-ish: the paths here are
+ * the ones the agent configuration must match.
+ */
+const logging = logTarget();
+log.info(`Kevbot starting (node ${process.version}, NODE_ENV=${process.env.NODE_ENV ?? 'development'})`);
+log.info(`Logging: level=${logging.level} format=${logging.format} file=${logging.file}`);
 
 const client = new Client({
   intents: [

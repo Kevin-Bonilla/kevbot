@@ -9,16 +9,15 @@
 # `git pull --ff-only`, rebuilds the image, and restarts the systemd unit. This
 # job does not reimplement any of that — it just runs the script you already
 # trust, so there is exactly one definition of "what a deploy means".
+#
+# The branch is deliberately NOT an input: this always deploys `main`, the ref
+# the VM tracks. Letting a dispatch pick an arbitrary ref would defeat the
+# guard below — you could launch from main and still ship an unreviewed branch.
 name: Deploy
 
 on:
   workflow_dispatch:
     inputs:
-      branch:
-        description: 'Branch on the VM to deploy (must match what the VM is tracking)'
-        required: true
-        default: 'main'
-        type: string
       confirm:
         description: 'Type DEPLOY to proceed. This restarts the live kevbot service.'
         required: true
@@ -76,7 +75,7 @@ jobs:
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.VM_SSH_PORT || '22' }}" \
             -o BatchMode=yes -o StrictHostKeyChecking=yes \
             "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
-            "cd /opt/kevbot && BRANCH='${{ inputs.branch }}' bash deploy/setup-vm.sh"
+            "cd /opt/kevbot && bash deploy/setup-vm.sh"
 
       # A green `systemctl restart` only proves systemd accepted the job. The
       # gateway can still fail a moment later (bad token, revoked intent), so
@@ -88,3 +87,13 @@ jobs:
             -o BatchMode=yes -o StrictHostKeyChecking=yes \
             "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
             'systemctl is-active kevbot && journalctl -u kevbot --since "2 min ago" --no-pager | tail -30'
+
+      # Read-only check. The Unified Monitoring Agent is what ships kevbot's
+      # log file to OCI Logging (deploy/oci-logging/README.md); if it is not
+      # running, the bot still serves commands, so warn instead of failing.
+      - name: Verify OCI logging agent is running
+        run: |
+          ssh -i ~/.ssh/deploy_key -p "${{ secrets.VM_SSH_PORT || '22' }}" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
+            'systemctl is-active unified-monitoring-agent || echo "unified-monitoring-agent not running - see deploy/oci-logging/README.md"' || true

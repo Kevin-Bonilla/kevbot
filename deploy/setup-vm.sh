@@ -128,6 +128,14 @@ else
   echo "    kevbot:latest"
 fi
 
+# --- OCI Logging ---
+# Deliberately NOT automated here. Shipping logs to OCI Logging needs an agent
+# configuration created in the OCI Console (or API) against this instance's
+# dynamic group, plus an IAM policy; none of that can be done from this VM
+# without credentials it should not have. See deploy/oci-logging/README.md.
+# This script only guarantees the precondition: a host directory the agent can
+# tail, which the systemd unit's bind mount and chown above already provide.
+
 cat <<'EOF'
 
 Done. Useful commands:
@@ -135,6 +143,10 @@ Done. Useful commands:
   journalctl -u kevbot -f         # live logs
   journalctl -u kevbot --since "1 hour ago" -p err
   sudo systemctl restart kevbot   # after a git pull + rebuild
+
+Send these logs to OCI Logging (optional, one-time Console + IAM setup):
+  see /opt/kevbot/deploy/oci-logging/README.md
+  sudo bash /opt/kevbot/deploy/oci-logging/check-agent.sh --emit-test
 
 Note: .env, data/whitelisted_users.json and data/blacklisted_users.json are
 gitignored, so they live only on this VM. Back them up if this box is
