@@ -83,3 +83,31 @@ jobs:
 
           echo "::error::Image failed for an unexpected reason (exit $code)."
           exit 1
+
+  # The Terraform in deploy/tf creates the OCI Logging destination. Nothing
+  # else in CI touches it, and an invalid resource type or argument only shows
+  # up at `terraform plan` — against a real tenancy. `validate` catches schema
+  # mistakes, missing required arguments, and bad variable references without
+  # needing credentials or state.
+  terraform:
+    name: Validate Terraform
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: deploy/tf
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          # The wrapper's output parsing breaks `validate`'s exit codes.
+          terraform_wrapper: false
+
+      # No backend and no state: validate only needs the provider schema.
+      - name: Init
+        run: terraform init -backend=false -input=false -no-color
+
+      - name: Validate
+        run: terraform validate -no-color
