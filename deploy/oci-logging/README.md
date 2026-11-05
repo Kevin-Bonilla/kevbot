@@ -173,9 +173,15 @@ the relative `logs/kevbot.log` lands on `/app/logs/kevbot.log`, which is
 Each line now looks like:
 
 ```json
-{"time":"2026-11-04T19:58:13.123Z","level":"info","service":"kevbot","host":"kevbot-vm","pid":1,"msg":"KEVBOT is ONLINE!"}
-{"time":"2026-11-04T19:59:02.004Z","level":"error","service":"kevbot","host":"kevbot-vm","pid":1,"msg":"Command purge failed:","error":{"name":"KevbotError","message":"...","code":"EACCES","stack":"KevbotError: ...\n    at ..."}}
+{"time":"2026-11-04T19:58:13.123Z","level":"info","service":"kevbot","host":"<container-hostname>","pid":1,"msg":"KEVBOT is ONLINE!"}
+{"time":"2026-11-04T19:59:02.004Z","level":"error","service":"kevbot","host":"<container-hostname>","pid":1,"msg":"Command purge failed:","error":{"name":"KevbotError","message":"...","code":"EACCES","stack":"KevbotError: ...\n    at ..."}}
 ```
+
+`host` is the container's hostname (the container ID, unless you set one), not
+the VM name — OCI already attaches the instance identity to every record, so
+filter on `service` and `level` rather than `host`. If you want it readable,
+add `--hostname kevbot` to the `docker run` in
+[`deploy/kevbot.service`](../kevbot.service).
 
 The console/journald copy stays human-readable text — `LOG_FORMAT` only changes
 the file.
