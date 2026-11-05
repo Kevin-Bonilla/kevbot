@@ -34,6 +34,22 @@ The bot handles `SIGTERM`/`SIGINT` for a clean gateway shutdown, and logs
 disconnects and unhandled rejections so a dead connection is visible in the
 journal instead of silent.
 
+### Logging on OCI
+
+Logs live in two places on the VM: the systemd journal (`journalctl -u kevbot`)
+and `/opt/kevbot/logs/kevbot.log` on the host, written through the container's
+`/app/logs` bind mount. To also send them to **OCI Logging** (Console search,
+retention, agent-health alarms), follow
+[deploy/oci-logging/README.md](deploy/oci-logging/README.md). It is a one-time
+setup: enable the Custom Logs Monitoring plugin, create the dynamic
+group/policy, point an agent configuration at `/opt/kevbot/logs/kevbot.log`,
+and set `LOG_FORMAT=json` so the agent can parse the lines. Check the chain at
+any time with:
+
+```bash
+sudo bash /opt/kevbot/deploy/oci-logging/check-agent.sh --emit-test
+```
+
 ## Environment
 Copy `.env.example` to `.env`. Key variables:
 - `DISCORD_TOKEN` — bot token (required).
@@ -42,6 +58,8 @@ Copy `.env.example` to `.env`. Key variables:
   if neither resolves to a real guild role, all three stay disabled.
 - `LOG_LEVEL` — `debug | info | warn | error` (default `info`).
 - `LOG_FILE` — app log file, appended (default `logs/kevbot.log`).
+- `LOG_FORMAT` — `text | json`, serialization of the **log file** (default
+  `text`; the console stays text). Set `json` on the VM for OCI Logging.
 
 Logging is app-wide: `import { log } from './logging/logger'` and call
 `log.debug/info/warn/error(msg, ...extra)`. Every line goes to the console

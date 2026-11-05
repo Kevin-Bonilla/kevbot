@@ -152,6 +152,10 @@ Done. Useful commands:
   journalctl -u kevbot --since "1 hour ago" -p err
   sudo systemctl restart kevbot   # after a git pull + rebuild
 
+Send these logs to OCI Logging (optional, one-time Console + IAM setup):
+  see /opt/kevbot/deploy/oci-logging/README.md
+  sudo bash /opt/kevbot/deploy/oci-logging/check-agent.sh --emit-test
+
 Note: .env, data/whitelisted_users.json and data/blacklisted_users.json are
 gitignored, so they live only on this VM. Back them up if this box is
 disposable — Oracle's free tier can be reclaimed if an account is idle.
