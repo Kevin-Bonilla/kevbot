@@ -111,6 +111,11 @@ instance must be in a dynamic group with a Logging policy.
 
 Console → **Observability & Management → Logging → Logs → Create custom log**.
 
+> **Terraform alternative:** [`deploy/tf/`](../tf/main.tf) creates the log group
+> `kevbot-logs` and the custom log `kevbot-app`, so you can skip items 1–2 and go
+> straight to the agent configuration (item 3). It cannot create the agent
+> configuration itself — that has to reference the instance's dynamic group.
+
 1. **Log name**: `kevbot-app`; pick the compartment; pick/create log group e.g.
    `kevbot-logs`.
 2. **Show additional options → Retention**: 30 days is plenty; max is 180.

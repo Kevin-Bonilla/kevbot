@@ -89,11 +89,12 @@ jobs:
             "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
             'systemctl is-active kevbot && journalctl -u kevbot --since "2 min ago" --no-pager | tail -30'
 
-      # Confirm the OCI Logging agent is reporting so you can monitor logs
-      # from the console. (Only if oci-setup.sh ran during setup-vm.sh.)
+      # Read-only check. The Unified Monitoring Agent is what ships kevbot's
+      # log file to OCI Logging (deploy/oci-logging/README.md); if it is not
+      # running, the bot still serves commands, so warn instead of failing.
       - name: Verify OCI logging agent is running
         run: |
           ssh -i ~/.ssh/deploy_key -p "${{ secrets.VM_SSH_PORT || '22' }}" \
             -o BatchMode=yes -o StrictHostKeyChecking=yes \
             "${{ secrets.VM_USER }}@${{ secrets.VM_HOST }}" \
-            'systemctl is-active oracle-cloud-agent || echo "oci agent not found - run deploy/oci-setup.sh manually"' || true
+            'systemctl is-active unified-monitoring-agent || echo "unified-monitoring-agent not running - see deploy/oci-logging/README.md"' || true

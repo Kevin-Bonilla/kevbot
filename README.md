@@ -43,8 +43,9 @@ retention, agent-health alarms), follow
 [deploy/oci-logging/README.md](deploy/oci-logging/README.md). It is a one-time
 setup: enable the Custom Logs Monitoring plugin, create the dynamic
 group/policy, point an agent configuration at `/opt/kevbot/logs/kevbot.log`,
-and set `LOG_FORMAT=json` so the agent can parse the lines. Check the chain at
-any time with:
+and set `LOG_FORMAT=json` so the agent can parse the lines. The log group and
+log can be created in the Console or with [`deploy/tf/`](deploy/tf/main.tf).
+Check the chain at any time with:
 
 ```bash
 sudo bash /opt/kevbot/deploy/oci-logging/check-agent.sh --emit-test
