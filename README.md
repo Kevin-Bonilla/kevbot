@@ -13,6 +13,23 @@ A Discord bot built with Node.js and TypeScript.
 - `npm run build`: Compiles the TypeScript source code into JavaScript.
 - `npm run start`: Runs the compiled production build.
 
+## Death counters
+
+`/died <name>`, `/deathcounter <name>`, and `/deathleaderboard` are Discord
+slash commands, registered automatically on startup (guild-scoped, so a
+redeploy updates them immediately). They require the bot's
+`applications.commands` scope; if they do not appear, re-invite the bot with it.
+
+Counts are stored per character in `data/kevbot.db`, a SQLite database using
+Node's built-in `node:sqlite`. That means no database server on the VM and no
+native module to compile in the alpine image. The file is created on first use
+and lives in the `data/` volume, so back it up (ideally with the bot stopped)
+along with the other `data/` files.
+Node **22.13 or newer** is required for unflagged `node:sqlite`; the
+Dockerfile's `node:22-alpine` satisfies this, and CI verifies the module loads
+in the built image. Node still prints an `ExperimentalWarning` for
+`node:sqlite` at startup — that is expected until the module is marked stable.
+
 ## Deployment (always-on)
 
 Oracle Always Free VM, Docker + systemd. On the VM:
@@ -28,7 +45,9 @@ image, installs `deploy/kevbot.service`, and starts the bot with
 
 Secrets and the user lists are gitignored, so they exist only on the VM:
 `.env` (token, purge role), `data/whitelisted_users.json`, and
-`data/blacklisted_users.json`. Copy them onto a new machine by hand.
+`data/blacklisted_users.json`. Copy them onto a new machine by hand. The
+death-counter database (`data/kevbot.db`) is also VM-only state — back it up
+with the lists, since it holds the only copy of the counts.
 
 The bot handles `SIGTERM`/`SIGINT` for a clean gateway shutdown, and logs
 disconnects and unhandled rejections so a dead connection is visible in the

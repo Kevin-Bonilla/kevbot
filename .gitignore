@@ -7,6 +7,9 @@ data/inactive_users.json
 data/whitelisted_users.json
 data/blacklisted_users.json
 data/purge_results.json
+# SQLite database for the death counters. Runtime state, created on first use;
+# never commit it (and the -journal/-wal siblings SQLite may create).
+data/kevbot.db*
 
 # Terraform (deploy/tf): state files carry resource identifiers and are
 # machine-specific. Never commit them; .terraform.lock.hcl SHOULD be committed.

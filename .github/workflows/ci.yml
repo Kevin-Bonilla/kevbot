@@ -61,6 +61,13 @@ jobs:
       - name: Build Docker image
         run: docker build -t kevbot:ci .
 
+      # The runtime image is alpine (musl) on Node 22. node:sqlite is built into
+      # Node from 22.13, but it is a platform-specific native module, so prove
+      # it actually loads in the image that ships instead of only on the Ubuntu
+      # CI runner. This catches a base image that quietly predates SQLite.
+      - name: Verify node:sqlite in the runtime image
+        run: docker run --rm kevbot:ci node -e "require('node:sqlite')"
+
       # Smoke-test the image without a Discord token: it must start, then fail
       # cleanly on the missing DISCORD_TOKEN rather than crash on a bad import
       # or a missing data/ file. A non-zero exit is the EXPECTED outcome here,

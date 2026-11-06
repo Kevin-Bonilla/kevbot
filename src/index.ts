@@ -1,6 +1,8 @@
-import { Client, GatewayIntentBits } from 'discord.js';
+import { Client, GatewayIntentBits, MessageFlags } from 'discord.js';
 import dotenv from 'dotenv';
 import { log, logTarget } from './logging/logger';
+import type { SlashCommand } from './types';
+import { DeathCounterService } from './services/death-counter.service';
 import { 
   oopsieCommand, 
   displayOopsieCountCommand,
@@ -9,6 +11,9 @@ import {
   purgeConfirmCommand,
   debugCommand,
   githubCommand,
+  diedCommand,
+  deathCounterCommand,
+  deathLeaderboardCommand,
 } from './commands/index';
 
 dotenv.config();
@@ -48,11 +53,55 @@ const commands = [
 ];
 
 /**
+ * Application (slash) commands, registered with Discord on startup.
+ *
+ * These are separate from `commands` above because they are dispatched by
+ * interaction, not by message text. Registering them is what makes `/died`
+ * work at all: Discord intercepts a leading `/` client-side, so a plain
+ * message containing "/died" never reaches the bot.
+ */
+const slashCommands: SlashCommand[] = [
+  diedCommand,
+  deathCounterCommand,
+  deathLeaderboardCommand,
+];
+
+/**
+ * Publishes the slash commands to every guild the bot is in.
+ *
+ * Guild-scoped registration is deliberate: global commands can take an hour to
+ * propagate, while guild commands appear immediately, and this bot serves one
+ * community. `set()` is idempotent, so a restart is the normal way to deploy a
+ * command change. Failures are logged, not thrown — a registration problem
+ * must not stop the bot from answering message commands.
+ */
+async function registerSlashCommands(): Promise<void> {
+  const body = slashCommands.map((command) => command.data.toJSON());
+  const guilds = [...client.guilds.cache.values()];
+  if (guilds.length === 0) {
+    log.warn('No guilds cached at startup; skipped slash command registration.');
+    return;
+  }
+
+  for (const guild of guilds) {
+    try {
+      await guild.commands.set(body);
+      log.info(`Registered ${body.length} slash commands in ${guild.name} (${guild.id})`);
+    } catch (err) {
+      log.error(`Failed to register slash commands in guild ${guild.id}:`, err);
+    }
+  }
+}
+
+/**
  * Event listener for when the bot is ready.
  */
 client.once('clientReady', () => {
   log.info(`Logged in as ${client.user?.tag}`);
   log.info('KEVBOT is ONLINE!');
+  // Fire-and-forget: the ready handler must not await REST calls, and
+  // registerSlashCommands() already logs its own failures.
+  void registerSlashCommands();
 });
 
 /**
@@ -90,6 +139,43 @@ client.on('messageCreate', async (message) => {
   }
 });
 
+/**
+ * Slash command dispatch. Same isolation rule as message commands: one failing
+ * interaction must not crash the client, and the user gets an ephemeral error
+ * instead of silence.
+ */
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const command = slashCommands.find((c) => c.data.name === interaction.commandName);
+  if (!command) {
+    // Normally impossible — Discord only sends commands we registered — but a
+    // stale registration from a previous deploy can leave one behind.
+    log.warn(`Received unknown slash command: /${interaction.commandName}`);
+    return;
+  }
+
+  try {
+    await command.execute(interaction);
+  } catch (err) {
+    log.error(`Slash command /${command.data.name} failed:`, err);
+    const content = `Sorry, \`/${command.data.name}\` hit an error: ${
+      err instanceof Error ? err.message : String(err)
+    }`;
+    try {
+      // An error after a reply (or defer) must be a follow-up; replying twice
+      // throws and would hide the original failure.
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+      } else {
+        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
+      }
+    } catch (replyErr) {
+      log.error('Failed to report slash command error:', replyErr);
+    }
+  }
+});
+
 
 if (TOKEN && TOKEN !== 'YOUR_TOKEN_HERE') {
   client.login(TOKEN);
@@ -116,6 +202,9 @@ async function shutdown(signal: string): Promise<void> {
   } catch (err) {
     log.error('Error during shutdown:', err);
   }
+  // Release the SQLite handle so the file is cleanly closed and any journal is
+  // checkpointed before the process exits.
+  DeathCounterService.close();
   // Give the logger a moment to flush the last line, then exit.
   setTimeout(() => process.exit(0), 250).unref();
 }

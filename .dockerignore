@@ -13,6 +13,13 @@ dist
 logs
 *.log
 
+# Local runtime state. The image seeds data/counter.json (a tracked file) and
+# creates the SQLite database in the mounted volume at runtime, so a developer's
+# local counters must never enter the build context.
+data/kevbot.db*
+data/inactive_users.json
+data/purge_results.json
+
 # Secrets. .env is never in a clone, but exclude it explicitly so a local
 # build can never bake a token into a layer.
 .env

@@ -33,6 +33,13 @@ COPY --from=build /app/package.json ./package.json
 # is ever empty in the clone context.
 COPY data/counter.json ./data/counter.json
 
+# The death-counter SQLite database (data/kevbot.db) is created at runtime by
+# the unprivileged `node` user. COPY above leaves /app/data owned by root, so
+# make it writable even when /app/data is NOT a volume (local docker run, CI).
+# In production the bind mount overrides this with the host dir that systemd
+# chowns to 1000:1000.
+RUN chown node:node /app/data
+
 # Run unprivileged. The node image already provides this user.
 USER node
 

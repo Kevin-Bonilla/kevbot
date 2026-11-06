@@ -4,11 +4,18 @@
 1. [x] Onboarding the bot to the server.
 2. [x] Implement Matthew Word Counter.
 3. [x] Implement the purge (dry run + real kick with whitelist and confirm step)
+4. [x] Implement WoW death counters (slash commands + SQLite)
 
 ## Features
 ### Matthew Oopsie Counter
 - **Increment Command**: Increments a counter.
 - **Display Command**: Outputs the current counter value.
+
+### WoW Death Counters
+- **Slash commands**: `/died <name>` increments, `/deathcounter <name>` shows one
+  character, `/deathleaderboard` ranks everyone by deaths.
+- **Storage**: per-character rows in `data/kevbot.db` (SQLite via Node's built-in
+  `node:sqlite`), keyed case-insensitively.
 
 ### LLM Chat Feature
 
