@@ -1,6 +1,24 @@
 #Available Commands
 -----------------------------------
 
+## Slash commands (application commands)
+
+Registered with Discord on startup, guild-scoped so changes appear immediately.
+They are **not** message commands: Discord intercepts a leading `/` client-side,
+so a literal "/died" message never reaches the bot.
+
+- `/died <name>` — records one death, creating the character on first use.
+- `/deathcounter <name>` — one character's death total.
+- `/deathleaderboard` — every character, most deaths first, with a grand total.
+
+Names are case-insensitive and whitespace-trimmed, so `matthew`, `Matthew`, and
+` matthew ` are one character. Counts live in `data/kevbot.db` (SQLite, built
+into Node 22 — no database server and no native addon to install). If the
+commands do not appear in Discord, re-invite the bot with the
+`applications.commands` scope.
+
+## Message commands
+
 - !purgeDryRun
 - !oopsie
 - !oopsiecounter
