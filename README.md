@@ -13,14 +13,36 @@ A Discord bot built with Node.js and TypeScript.
 - `npm run build`: Compiles the TypeScript source code into JavaScript.
 - `npm run start`: Runs the compiled production build.
 
+## Commands
+
+Kevbot is slash-only: every command is a Discord application command,
+registered on startup (guild-scoped, so a redeploy updates them immediately).
+The old `!message` commands are gone, and with them the `messageCreate`
+handler, the privileged **MessageContent** intent, and the `GuildMessages`
+intent. Discord intercepts a leading `/` client-side, so a literal `/died`
+message never reaches the bot.
+
+| Command | Restrictions |
+| --- | --- |
+| `/died`, `/deathcounter`, `/deathleaderboard` | none |
+| `/oopsie`, `/oopsiecounter` | kevins-ai-chamber only |
+| `/purge dry-run`, `/purge preview` + Confirm/Cancel | kevins-ai-chamber only + purge role |
+| `/debug` | kevins-ai-chamber only |
+| `/github` | none |
+
+The channel and role restrictions are deliberate and enforced in code (channel
+in `src/index.ts`, role in `src/services/role-gate.service.ts`);
+`tests/commands/registration.test.ts` pins the set so one cannot be dropped by
+accident. If commands do not appear in Discord, re-invite the bot with the
+`applications.commands` scope. The full reference, including the purge
+workflow and the whitelist/blacklist rules, is in
+[src/commands/commands.md](src/commands/commands.md).
+
 ## Death counters
 
-`/died <name>`, `/deathcounter <name>`, and `/deathleaderboard` are Discord
-slash commands, registered automatically on startup (guild-scoped, so a
-redeploy updates them immediately). They require the bot's
-`applications.commands` scope; if they do not appear, re-invite the bot with it.
-
-Counts are stored per character in `data/kevbot.db`, a SQLite database using
+`/died <name>`, `/deathcounter <name>`, and `/deathleaderboard` are covered in
+the table above. Counts are stored per character in `data/kevbot.db`, a SQLite
+database using
 Node's built-in `node:sqlite`. That means no database server on the VM and no
 native module to compile in the alpine image. The file is created on first use
 and lives in the `data/` volume, so back it up (ideally with the bot stopped)
@@ -73,9 +95,10 @@ sudo bash /opt/kevbot/deploy/oci-logging/check-agent.sh --emit-test
 ## Environment
 Copy `.env.example` to `.env`. Key variables:
 - `DISCORD_TOKEN` — bot token (required).
-- `PURGE_ROLE_ID` / `PURGE_ROLE_NAME` — role gate for `!purgeDryRun`, `!purge`
-  and `!purge confirm`. Shared by all three via `src/services/role-gate.service.ts`;
-  if neither resolves to a real guild role, all three stay disabled.
+- `PURGE_ROLE_ID` / `PURGE_ROLE_NAME` — role gate for `/purge dry-run` and
+  `/purge preview`. If neither resolves to a real guild role, the purge stays
+  disabled. `PURGE_ADMIN_IDS` (comma-separated user IDs) authorizes the same
+  commands without a role. See `src/services/role-gate.service.ts`.
 - `LOG_LEVEL` — `debug | info | warn | error` (default `info`).
 - `LOG_FILE` — app log file, appended (default `logs/kevbot.log`).
 - `LOG_FORMAT` — `text | json`, serialization of the **log file** (default

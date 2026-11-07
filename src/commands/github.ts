@@ -1,17 +1,19 @@
-import { Command } from '../types';
+import { SlashCommandBuilder } from 'discord.js';
+import type { SlashCommand } from '../types';
 
 /**
- * Command to display the GitHub repository link.
- * 
- * @param name - The name of the command
- * @param description - The description of the command
- * @returns A promise that resolves when the command has been executed
+ * `/github` — link to the repo.
+ *
+ * Unrestricted, like the message command it replaces: it was usable in any
+ * channel. Discord still decides who may see the command where, via the
+ * server's Integrations settings.
  */
-export const githubCommand: Command = {
-  name: '!github',
-  description: 'Displays github repo link',
-  execute: async (message, client) => {
+export const githubCommand: SlashCommand = {
+  data: new SlashCommandBuilder()
+    .setName('github')
+    .setDescription('Displays the kevbot GitHub repository link'),
+  execute: async (interaction) => {
     const githubLink = 'https://github.com/Kevin-Bonilla/kevbot';
-    await message.channel.send(`Follow my Development! ${githubLink}`);
-  }
+    await interaction.reply(`Follow my Development! ${githubLink}`);
+  },
 };

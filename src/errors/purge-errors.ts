@@ -37,7 +37,7 @@ export class UserListMalformedError extends KevbotError {
     super(
       `A user list file used by the purge is present but could not be read, so the ` +
       `purge was aborted and no one was kicked. Fix the malformed file (or delete ` +
-      `it) and run \`!purge\` again — the log file has the details.`
+      `it) and run \`/purge preview\` again — the log file has the details.`
     );
     this.detail =
       `The ${listName} file (${filePath}) is present but could not be read. ` +

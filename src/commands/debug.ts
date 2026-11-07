@@ -1,29 +1,28 @@
-import { Command } from '../types';
+import { SlashCommandBuilder } from 'discord.js';
+import type { SlashCommand } from '../types';
+import { ADMIN_CHANNELS } from '../config/admin-channels';
 
 /**
- * Command to debug bot status and permissions.
- * Only available in kevins-ai-chamber.
+ * `/debug` — bot status and permissions at a glance.
  *
- * @param name - The name of the command
- * @param description - The description of the command
- * @param requiredChannelId - The ID of the channel where this command can be executed
- * @returns A promise that resolves when the command has been executed
+ * Keeps the old command's channel restriction: kevins-ai-chamber only.
  */
-export const debugCommand: Command = {
-  name: '!debug',
-  description: 'Debug bot status and permissions',
-  requiredChannelId: '1552121753692667977',
-  execute: async (message, client) => {
-    if (!client) {
-      return message.reply("Error: Client is undefined.");
-    }
+export const debugCommand: SlashCommand = {
+  data: new SlashCommandBuilder()
+    .setName('debug')
+    .setDescription('Debug bot status and permissions'),
+  requiredChannelId: ADMIN_CHANNELS.kevinsAiChamber,
+  execute: async (interaction) => {
+    // interaction.client is always the logged-in client, so the old
+    // "client is undefined" branch is impossible; keep the payload identical.
+    const client = interaction.client;
 
     let guildName = 'No Guild / No Access';
     let memberCount = 0;
     let channelCount = 0;
 
     if (client.guilds.cache.size > 0) {
-      const guild = client.guilds.cache.first();
+      const guild = client.guilds.cache.first()!;
       guildName = guild.name || 'Unknown Name';
       memberCount = guild.memberCount;
       channelCount = guild.channels.cache.size;
@@ -35,9 +34,11 @@ export const debugCommand: Command = {
       channelCount,
       os: process.platform,
       node_version: process.version,
-      client_version: process.versions.node
+      client_version: process.versions.node,
     };
-    
-    await message.reply(`**Debug Info:**\n${JSON.stringify(debugInfo, null, 2)}`);
+
+    // A code block keeps Discord from swallowing the JSON's whitespace, which
+    // a plain reply does for repeated spaces and blank lines.
+    await interaction.reply(`**Debug Info:**\n\`\`\`json\n${JSON.stringify(debugInfo, null, 2)}\n\`\`\``);
   },
 };

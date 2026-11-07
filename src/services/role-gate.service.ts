@@ -1,8 +1,17 @@
+import { MessageFlags } from 'discord.js';
+import type { ButtonInteraction, ChatInputCommandInteraction } from 'discord.js';
 import { log } from '../logging/logger';
 
 /**
- * Shared role gate for the privileged maintenance commands (`!purgeDryRun`,
- * `!purge`, `!purge confirm`).
+ * Either interaction the gate can see: the slash command that arms a purge,
+ * or the button click that confirms it. Both carry `user`, `guild`, `member`,
+ * and the reply state the gate needs.
+ */
+type GatedInteraction = ChatInputCommandInteraction | ButtonInteraction;
+
+/**
+ * Shared role gate for the privileged maintenance commands (`/purge dry-run`
+ * and `/purge preview`).
  *
  * Two independent ways to be authorized, either of which is sufficient:
  *
@@ -25,6 +34,12 @@ import { log } from '../logging/logger';
  * Extracted from src/commands/purge.ts so the dry run and the real purge
  * can't drift apart: a scan is just as expensive and as intrusive as the
  * kicks it feeds.
+ *
+ * Takes the interaction, not a Message: the commands are slash-only now, and
+ * `interaction.user` / `interaction.member` are the shapes Discord actually
+ * sends. Note that `interaction.member` is null in DMs, and a guild-scoped
+ * command cannot be used in a DM anyway, so the role branch only ever runs
+ * with a real guild member.
  */
 
 /**
@@ -79,15 +94,20 @@ export function resolvePurgeRoleId(guild: any): string | null {
 }
 
 /**
- * True when the message author holds the configured purge role OR is listed
- * in PURGE_ADMIN_IDS.
+ * True when the interaction's user holds the configured purge role OR is
+ * listed in PURGE_ADMIN_IDS.
  *
- * @param message - The Discord message object
- * @returns Whether the author is allowed to run the gated command
+ * Reads the member from the interaction rather than from the guild cache:
+ * `interaction.member` arrives with the interaction, so this works before the
+ * member is cached and does not depend on the GuildMembers intent having
+ * produced a chunk.
+ *
+ * @param interaction - The slash or button interaction being authorized
+ * @returns Whether the user is allowed to run the gated command
  */
-export function canPurge(message: any): boolean {
-  const authorId = message.author?.id;
-  const who = `${message.author?.username} (${authorId})`;
+export function canPurge(interaction: GatedInteraction): boolean {
+  const authorId = interaction.user?.id;
+  const who = `${interaction.user?.username} (${authorId})`;
 
   // User-ID check first: it is the path a solo operator actually takes, and it
   // works even when no role exists in the guild.
@@ -96,13 +116,17 @@ export function canPurge(message: any): boolean {
     return true;
   }
 
-  const roleId = resolvePurgeRoleId(message.guild);
+  const roleId = resolvePurgeRoleId(interaction.guild);
   if (!roleId) {
     log.warn(`Denied ${who}: no valid purge role or admin ID configured`);
     return false;
   }
 
-  const allowed = !!message.member && message.member.roles.cache.has(roleId);
+  // Cast: in a guild, `member` is a GuildMember with a RoleManager; discord.js
+  // also types the raw API shape (roles as an array of ids), which never
+  // reaches here for a guild-scoped command.
+  const member = interaction.member as { roles?: { cache?: { has(id: string): boolean } } } | null;
+  const allowed = !!member?.roles?.cache?.has(roleId);
   if (!allowed) {
     log.info(`Denied ${who}: lacks purge role ${roleId} and is not in PURGE_ADMIN_IDS`);
   }
@@ -113,22 +137,35 @@ export function canPurge(message: any): boolean {
  * Replies with a permission error tailored to the configured state, so the
  * caller learns whether they're missing access or nothing was ever set up.
  *
- * @param message - The Discord message object
- * @param commandName - The command the author tried to run
+ * Always ephemeral: a denial is not something the channel needs to see, and
+ * for the purge it would otherwise leak that the command exists and is
+ * configured.
+ *
+ * @param interaction - The interaction to answer
+ * @param commandName - The command the user tried to run, e.g. '/purge preview'
  * @returns A promise that resolves when the reply has been sent
  */
-export async function replyNoPermission(message: any, commandName = '!purge'): Promise<void> {
+export async function replyNoPermission(
+  interaction: GatedInteraction,
+  commandName = '/purge'
+): Promise<void> {
   const configured =
     !!process.env.PURGE_ROLE_ID ||
     !!process.env.PURGE_ROLE_NAME ||
     !!process.env.PURGE_ADMIN_IDS?.trim();
 
-  if (configured) {
-    await message.reply(`You need the purge role to use \`${commandName}\`.`);
+  const content = configured
+    ? `You need the purge role to use \`${commandName}\`.`
+    : `Access is not configured yet (set PURGE_ADMIN_IDS or PURGE_ROLE_ID in .env); ` +
+      `\`${commandName}\` is disabled.`;
+
+  const payload = { content, flags: MessageFlags.Ephemeral as const };
+
+  // A caller that deferred before checking permission still gets the message;
+  // replying twice throws and would hide the real denial.
+  if (interaction.replied || interaction.deferred) {
+    await interaction.followUp(payload);
   } else {
-    await message.reply(
-      `Access is not configured yet (set PURGE_ADMIN_IDS or PURGE_ROLE_ID in .env); ` +
-      `\`${commandName}\` is disabled.`
-    );
+    await interaction.reply(payload);
   }
 }

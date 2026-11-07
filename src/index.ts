@@ -1,20 +1,10 @@
 import { Client, GatewayIntentBits, MessageFlags } from 'discord.js';
+import type { ButtonInteraction, ChatInputCommandInteraction } from 'discord.js';
 import dotenv from 'dotenv';
 import { log, logTarget } from './logging/logger';
-import type { SlashCommand } from './types';
 import { DeathCounterService } from './services/death-counter.service';
-import { 
-  oopsieCommand, 
-  displayOopsieCountCommand,
-  purgeDryRunCommand,
-  purgeCommand,
-  purgeConfirmCommand,
-  debugCommand,
-  githubCommand,
-  diedCommand,
-  deathCounterCommand,
-  deathLeaderboardCommand,
-} from './commands/index';
+import { handlePurgeButton, PURGE_BUTTON_IDS } from './commands/index';
+import { slashCommands } from './commands/registry';
 
 dotenv.config();
 
@@ -31,40 +21,33 @@ const logging = logTarget();
 log.info(`Kevbot starting (node ${process.version}, NODE_ENV=${process.env.NODE_ENV ?? 'development'})`);
 log.info(`Logging: level=${logging.level} format=${logging.format} file=${logging.file}`);
 
+/**
+ * Intents are deliberately minimal now that the bot is slash-only.
+ *
+ *  - Guilds: guild/channel caches, needed for the purge scan.
+ *  - GuildMembers: the privileged intent the member-fetch REST calls and the
+ *    purge's `guild.members.fetch()` rely on.
+ *
+ * GuildMessages and MessageContent are gone with the `!` commands. Slash
+ * commands arrive over the interactions gateway, not as message events, so
+ * requesting MessageContent would only widen the bot's privilege for no gain
+ * (and it is the intent Discord requires extra approval for).
+ */
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
     GatewayIntentBits.GuildMembers,
   ],
 });
 
 const TOKEN = process.env.DISCORD_TOKEN;
 
-const commands = [
-  oopsieCommand, 
-  displayOopsieCountCommand, 
-  purgeDryRunCommand, 
-  purgeCommand,
-  purgeConfirmCommand,
-  debugCommand, 
-  githubCommand
-];
-
 /**
- * Application (slash) commands, registered with Discord on startup.
- *
- * These are separate from `commands` above because they are dispatched by
- * interaction, not by message text. Registering them is what makes `/died`
- * work at all: Discord intercepts a leading `/` client-side, so a plain
- * message containing "/died" never reaches the bot.
+ * Discord's hard cap on guild-scoped CHAT_INPUT commands (the same number
+ * applies globally). Long past this the guild's command list would also be
+ * unusable in the client, so refuse the registration instead of half-failing.
  */
-const slashCommands: SlashCommand[] = [
-  diedCommand,
-  deathCounterCommand,
-  deathLeaderboardCommand,
-];
+const MAX_GUILD_COMMANDS = 100;
 
 /**
  * Publishes the slash commands to every guild the bot is in.
@@ -73,10 +56,18 @@ const slashCommands: SlashCommand[] = [
  * propagate, while guild commands appear immediately, and this bot serves one
  * community. `set()` is idempotent, so a restart is the normal way to deploy a
  * command change. Failures are logged, not thrown — a registration problem
- * must not stop the bot from answering message commands.
+ * must not stop the bot from answering anything else.
  */
 async function registerSlashCommands(): Promise<void> {
   const body = slashCommands.map((command) => command.data.toJSON());
+  if (body.length > MAX_GUILD_COMMANDS) {
+    log.error(
+      `Refusing to register ${body.length} slash commands: Discord caps guild ` +
+      `commands at ${MAX_GUILD_COMMANDS}. Split them into subcommands.`
+    );
+    return;
+  }
+
   const guilds = [...client.guilds.cache.values()];
   if (guilds.length === 0) {
     log.warn('No guilds cached at startup; skipped slash command registration.');
@@ -119,32 +110,62 @@ process.on('unhandledRejection', (err) => log.error('Unhandled promise rejection
 process.on('uncaughtException', (err) => log.error('Uncaught exception:', err));
 
 /**
- * Event listener for when a message is created in a channel.
+ * Tells the user a command failed, without letting one bug take the bot down.
+ *
+ * An error after a reply (or defer) must be a follow-up; replying twice throws
+ * and would hide the original failure.
  */
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-
-  const command = commands.find(c => message.content === c.name);
-  if (command) {
-    if (command.requiredChannelId && message.channel.id !== command.requiredChannelId) {
-      return; // Ignore command if not in the correct channel
+async function reportInteractionError(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+  label: string,
+  err: unknown
+): Promise<void> {
+  log.error(`${label} failed:`, err);
+  const content = `Sorry, \`${label}\` hit an error: ${
+    err instanceof Error ? err.message : String(err)
+  }`;
+  try {
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
+    } else {
+      await interaction.reply({ content, flags: MessageFlags.Ephemeral });
     }
-    await command.execute(message, client).catch((err) => {
-      // A bug inside ONE command must never take the whole bot down:
-      // an unhandled throw/throw here historically crashed the client.
-      log.error(`Command ${command.name} failed:`, err);
-      message.reply(`Sorry, \`${command.name}\` hit an error: ${err instanceof Error ? err.message : String(err)}`)
-        .catch(() => {});
-    });
+  } catch (replyErr) {
+    log.error('Failed to report interaction error:', replyErr);
   }
-});
+}
 
 /**
- * Slash command dispatch. Same isolation rule as message commands: one failing
- * interaction must not crash the client, and the user gets an ephemeral error
- * instead of silence.
+ * True for the only buttons the bot creates. Compared against the exported
+ * map rather than literals so a rename cannot leave a dead button behind.
+ */
+function isPurgeButton(customId: string): boolean {
+  return (
+    customId === PURGE_BUTTON_IDS.confirm || customId === PURGE_BUTTON_IDS.cancel
+  );
+}
+
+/**
+ * The interaction dispatcher.
+ *
+ * Slash commands are looked up by name; the purge confirmation arrives as a
+ * button click on the preview message. One failing interaction must not crash
+ * the client, and the user gets an ephemeral error instead of silence.
  */
 client.on('interactionCreate', async (interaction) => {
+  if (interaction.isButton()) {
+    if (!isPurgeButton(interaction.customId)) {
+      log.warn(`Received unknown button interaction: ${interaction.customId}`);
+      return;
+    }
+    try {
+      await handlePurgeButton(interaction);
+    } catch (err) {
+      await reportInteractionError(interaction, '/purge', err);
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const command = slashCommands.find((c) => c.data.name === interaction.commandName);
@@ -155,24 +176,22 @@ client.on('interactionCreate', async (interaction) => {
     return;
   }
 
+  // Channel restrictions survived the move to slash commands: Discord lets a
+  // bot hide a command by permissions, not by channel, so the guard has to
+  // live here. It is a guardrail (keeps the counter jokes and the purge in
+  // their channel), not the security boundary — the purge role gate is.
+  if (command.requiredChannelId && interaction.channelId !== command.requiredChannelId) {
+    await interaction.reply({
+      content: `\`/${command.data.name}\` only works in <#${command.requiredChannelId}>.`,
+      flags: MessageFlags.Ephemeral,
+    }).catch((err) => log.error('Failed to report wrong-channel use:', err));
+    return;
+  }
+
   try {
     await command.execute(interaction);
   } catch (err) {
-    log.error(`Slash command /${command.data.name} failed:`, err);
-    const content = `Sorry, \`/${command.data.name}\` hit an error: ${
-      err instanceof Error ? err.message : String(err)
-    }`;
-    try {
-      // An error after a reply (or defer) must be a follow-up; replying twice
-      // throws and would hide the original failure.
-      if (interaction.replied || interaction.deferred) {
-        await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
-      } else {
-        await interaction.reply({ content, flags: MessageFlags.Ephemeral });
-      }
-    } catch (replyErr) {
-      log.error('Failed to report slash command error:', replyErr);
-    }
+    await reportInteractionError(interaction, `/${command.data.name}`, err);
   }
 });
 
