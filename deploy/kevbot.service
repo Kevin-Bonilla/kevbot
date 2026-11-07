@@ -42,7 +42,13 @@ ExecStart=/usr/bin/docker run \
   -v /opt/kevbot/data:/app/data \
   -v /opt/kevbot/logs:/app/logs \
   kevbot:latest
-ExecStop=/usr/bin/docker stop -t 30 kevbot
+# The container writes its shutdown log lines and the deploy marker as uid
+# 1000. If anything changed data/ or logs/ ownership while it was running — the
+# deploy script used to chown the whole tree to the deploy user — give them back
+# BEFORE SIGTERM, so the shutdown marker still lands and the restart can
+# announce itself as awake. chown failure is not fatal (the `;`), because the
+# stop must happen either way.
+ExecStop=/bin/sh -c '/usr/bin/chown -R 1000:1000 /opt/kevbot/data /opt/kevbot/logs; exec /usr/bin/docker stop -t 30 kevbot'
 ExecStopPost=-/usr/bin/docker rm -f kevbot
 
 # --- Hardening ---

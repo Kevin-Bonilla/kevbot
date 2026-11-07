@@ -9,6 +9,12 @@ APP_DIR="${APP_DIR:-/opt/kevbot}"
 REPO_URL="${REPO_URL:-https://github.com/Kevin-Bonilla/kevbot.git}"
 BRANCH="${BRANCH:-main}"
 
+# uid:gid of the `node` user in the runtime image (Dockerfile `USER node`). The
+# systemd unit's ExecStartPre enforces the same pair on data/ and logs/, so keep
+# these in sync or the container cannot write its own state.
+CONTAINER_UID=1000
+CONTAINER_GID=1000
+
 say() { printf '\n\033[1;36m==>\033[0m %s\n' "$*"; }
 die() { printf '\n\033[1;31mERROR:\033[0m %s\n' "$*" >&2; exit 1; }
 
@@ -38,7 +44,18 @@ fi
 
 say "Creating $APP_DIR"
 sudo mkdir -p "$APP_DIR/data" "$APP_DIR/logs"
-sudo chown -R "$(id -u):$(id -g)" "$APP_DIR" 2>/dev/null || true
+if [ -d "$APP_DIR/.git" ]; then
+  # Update: data/ and logs/ must stay owned by the container user. The old
+  # container is still running while this script builds, and handing those
+  # directories to the deploy user (the old chown -R over the whole tree) made
+  # its last writes fail: the log file went EACCES, and the deploy marker could
+  # not be written, so the restart had nothing to announce as awake. The repo
+  # itself is already the deploy user's; only a fresh clone needs the full
+  # chown.
+  sudo chown -R "$CONTAINER_UID:$CONTAINER_GID" "$APP_DIR/data" "$APP_DIR/logs" 2>/dev/null || true
+else
+  sudo chown -R "$(id -u):$(id -g)" "$APP_DIR" 2>/dev/null || true
+fi
 
 # --- Source ---
 if [ -d "$APP_DIR/.git" ]; then
@@ -119,13 +136,19 @@ fi
 # The list files are gitignored, so a fresh clone has no data/ contents beyond
 # counter.json. An absent list means "empty", which is safe; a 0-BYTE file is
 # malformed and ABORTS the purge. Create them properly.
+#
+# sudo, because data/ belongs to the container user (see the chown above), not
+# to the deploy user. The file is created root-owned by tee and then handed to
+# the container uid, matching what systemd does before the container starts.
 for f in whitelisted_users.json blacklisted_users.json; do
   if [ ! -f "$APP_DIR/data/$f" ]; then
     say "Creating empty data/$f"
-    echo '[]' > "$APP_DIR/data/$f"
+    printf '[]\n' | sudo tee "$APP_DIR/data/$f" >/dev/null
+    sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$APP_DIR/data/$f"
   elif [ ! -s "$APP_DIR/data/$f" ]; then
     say "data/$f is 0 bytes — that ABORTS the purge. Rewriting as []"
-    echo '[]' > "$APP_DIR/data/$f"
+    printf '[]\n' | sudo tee "$APP_DIR/data/$f" >/dev/null
+    sudo chown "$CONTAINER_UID:$CONTAINER_GID" "$APP_DIR/data/$f"
   fi
 done
 
