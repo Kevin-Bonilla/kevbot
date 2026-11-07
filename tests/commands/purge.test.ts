@@ -70,13 +70,30 @@ function writeList(file: string, ids: string[]): void {
   fs.writeFileSync(path.join(tempDir, file), JSON.stringify(ids.map((id) => ({ id })), null, 2));
 }
 
+/**
+ * Stand-in for the channel a command replies in, so the "the interaction token
+ * expired mid-scan" fallback can be observed. `isSendable` narrows the real
+ * `interaction.channel` type, so it has to exist on the fake too.
+ */
+function fakeChannel(sent: Recorded[]) {
+  return {
+    isSendable: () => true,
+    async send(payload: Recorded | string) {
+      sent.push(recorded(payload));
+    },
+  };
+}
+
 /** Fake for `/purge <subcommand>`. */
 function fakeSlashInteraction(opts: {
   subcommand?: string;
   messageId?: string | null;
+  /** Simulates the 15-minute interaction token having expired. */
+  editReplyError?: Error;
 } = {}) {
   const replies: Recorded[] = [];
   const edits: Recorded[] = [];
+  const sent: Recorded[] = [];
   let replied = false;
   let deferred = false;
 
@@ -85,6 +102,7 @@ function fakeSlashInteraction(opts: {
     guild: fakeGuild(),
     member: { roles: { cache: { has: () => false } } },
     channelId: CHANNEL_ID,
+    channel: fakeChannel(sent),
     client: {},
     options: { getSubcommand: () => opts.subcommand ?? 'preview' },
     get replied() { return replied; },
@@ -102,10 +120,11 @@ function fakeSlashInteraction(opts: {
       deferred = true;
     },
     async editReply(payload: Recorded | string) {
+      if (opts.editReplyError) throw opts.editReplyError;
       edits.push(recorded(payload));
     },
   };
-  return { interaction, replies, edits };
+  return { interaction, replies, edits, sent };
 }
 
 /** Fake for a click on a purge preview button. */
@@ -114,10 +133,13 @@ function fakeButtonInteraction(opts: {
   userId?: string;
   messageId?: string;
   channelId?: string;
+  /** Simulates the 15-minute interaction token having expired. */
+  editReplyError?: Error;
 } = {}) {
   const replies: Recorded[] = [];
   const updates: Recorded[] = [];
   const edits: Recorded[] = [];
+  const sent: Recorded[] = [];
 
   const interaction = {
     customId: opts.customId ?? PURGE_BUTTON_IDS.confirm,
@@ -125,6 +147,7 @@ function fakeButtonInteraction(opts: {
     guild: fakeGuild(),
     member: { roles: { cache: { has: () => false } } },
     channelId: opts.channelId ?? CHANNEL_ID,
+    channel: fakeChannel(sent),
     message: { id: opts.messageId ?? PREVIEW_MESSAGE_ID },
     replied: false,
     deferred: false,
@@ -138,10 +161,11 @@ function fakeButtonInteraction(opts: {
       updates.push(recorded(payload));
     },
     async editReply(payload: Recorded | string) {
+      if (opts.editReplyError) throw opts.editReplyError;
       edits.push(recorded(payload));
     },
   };
-  return { interaction, replies, updates, edits };
+  return { interaction, replies, updates, edits, sent };
 }
 
 function kick(id: string, status: 'kicked' | 'failed'): PurgeResult['kicked'][number] {
@@ -278,6 +302,67 @@ describe('/purge preview — arming', () => {
   });
 });
 
+describe('/purge dry-run — progress and completion', () => {
+  it('cancels the throttled progress edit so it cannot overwrite the result', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(InactiveUserService, 'scanInactiveUsers').mockImplementation(
+      async (_client, onProgress) => {
+        onProgress?.(1, 3, 'one');
+        // Inside MIN_EDIT_SPACING_MS, so this one is coalesced into a timer.
+        onProgress?.(2, 3, 'two');
+        return USERS;
+      }
+    );
+    const { interaction, edits } = fakeSlashInteraction({ subcommand: 'dry-run' });
+
+    await purgeCommand.execute(interaction as unknown as ChatInputCommandInteraction);
+    expect(edits.at(-1)?.content).toContain('Scan complete');
+
+    // The flush that was still pending when the scan finished must not fire at
+    // all: one that did would replace the result with a stale "Scanning" line.
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(edits.at(-1)?.content).toContain('Scan complete');
+    expect(edits.some((edit) => edit.content?.includes('Scanning channel 2/3'))).toBe(false);
+  });
+
+  it('posts the result in the channel when the interaction token expired mid-scan', async () => {
+    vi.spyOn(InactiveUserService, 'scanInactiveUsers').mockResolvedValue(USERS);
+    const { interaction, edits, sent } = fakeSlashInteraction({
+      subcommand: 'dry-run',
+      editReplyError: new Error('Unknown interaction'),
+    });
+
+    await purgeCommand.execute(interaction as unknown as ChatInputCommandInteraction);
+
+    // The edit is rejected for the same reason a 15-minute-old token rejects
+    // everything, so the outcome has to arrive some other way.
+    expect(edits).toHaveLength(0);
+    expect(sent[0].content).toContain('Scan complete');
+    expect(sent[0].content).toContain('2 inactive members');
+  });
+
+  it('stops the throttle when the scan throws, so nothing overwrites the error', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(InactiveUserService, 'scanInactiveUsers').mockImplementation(
+      async (_client, onProgress) => {
+        onProgress?.(1, 3, 'one');
+        onProgress?.(2, 3, 'two'); // coalesced into a pending flush
+        throw new Error('boom');
+      }
+    );
+    const { interaction, edits } = fakeSlashInteraction({ subcommand: 'dry-run' });
+
+    // The dispatcher in src/index.ts catches this and reports it; the throttle
+    // must not still be armed when it does.
+    await expect(
+      purgeCommand.execute(interaction as unknown as ChatInputCommandInteraction)
+    ).rejects.toThrow('boom');
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(edits.some((edit) => edit.content?.includes('Scanning channel 2/3'))).toBe(false);
+  });
+});
+
 describe('/purge buttons — confirmation rules', () => {
   it('cancels and clears the armed purge', async () => {
     await arm();
@@ -409,5 +494,20 @@ describe('/purge buttons — confirmation rules', () => {
     expect(text).toContain('Purge aborted');
     expect(text).not.toContain('secret.json');
     expect(text).toContain('data/purge_results.json');
+  });
+
+  it('does not report a completed purge as aborted when the summary cannot be posted', async () => {
+    await arm();
+    vi.spyOn(InactiveUserService, 'purgeInactiveUsers').mockResolvedValue(purgeResult());
+    // The purge outlived the 15-minute interaction token: the run happened, the
+    // audit file is written, and only the edit that reports it fails.
+    const click = fakeButtonInteraction({ editReplyError: new Error('Unknown interaction') });
+
+    await handlePurgeButton(click.interaction as unknown as ButtonInteraction);
+
+    expect(click.updates[0].content).toContain('Purge confirmed');
+    expect(click.edits).toHaveLength(0);
+    expect(click.sent[0].content).toContain('Purge complete');
+    expect(click.sent[0].content).not.toContain('aborted');
   });
 });

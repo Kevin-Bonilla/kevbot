@@ -12,7 +12,7 @@ import { canPurge, replyNoPermission } from '../services/role-gate.service';
 import { UserListMalformedError } from '../errors';
 import { log } from '../logging/logger';
 import { ADMIN_CHANNELS } from '../config/admin-channels';
-import type { PurgeResult } from '../types/users';
+import type { PurgeResult, UserRecord } from '../types/users';
 
 /**
  * The purge, as one `/purge` command with two subcommands:
@@ -123,6 +123,38 @@ async function notice(
 }
 
 /**
+ * Posts a final line where it cannot be lost.
+ *
+ * `editReply` is the normal path, but the interaction token behind it lives 15
+ * minutes. A full-history scan or a long kick loop can outlive that, and every
+ * edit after it fails with "Unknown interaction" — which would leave the
+ * operator with no outcome at all for an expensive scan or a destructive
+ * purge. Fall back to a plain channel message so the result (or the audit
+ * pointer) still reaches the channel, and log the failure either way.
+ */
+async function finishReply(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+  content: string
+): Promise<void> {
+  try {
+    await interaction.editReply(content);
+    return;
+  } catch (err) {
+    log.error('Could not update the interaction reply; posting the outcome in channel instead:', err);
+  }
+
+  const channel = interaction.channel;
+  if (!channel || !channel.isSendable()) {
+    log.error(`No sendable channel for the outcome either; the text was: ${content}`);
+    return;
+  }
+
+  await channel.send(content).catch((err) => {
+    log.error('Failed to post the outcome in channel:', err);
+  });
+}
+
+/**
  * `/purge dry-run` — full-history scan of every text channel.
  *
  * Deferred before the scan starts: Discord gives an interaction three seconds
@@ -137,34 +169,77 @@ async function runDryRun(interaction: ChatInputCommandInteraction): Promise<void
   let lastEditAt = 0;
   let pendingText: string | null = null;
   let flushing = false;
+  let flushTimer: ReturnType<typeof setTimeout> | null = null;
+  let finished = false;
+
+  /**
+   * Progress is best-effort. Once the interaction token expires (15 minutes on
+   * a busy guild's full history) every edit fails the same way, so log the
+   * first failure — otherwise the expiry is completely silent — and keep the
+   * rest quiet instead of writing a warning per channel.
+   */
+  let editFailureLogged = false;
+  const editProgress = (text: string): void => {
+    interaction.editReply(text).catch((err) => {
+      if (!editFailureLogged) {
+        editFailureLogged = true;
+        log.warn(
+          'Could not update /purge dry-run progress (the interaction may have expired); ' +
+          'the scan itself is unaffected:',
+          err
+        );
+      }
+    });
+  };
+
   const pushProgress = (completedChannels: number, totalChannels: number, channelName: string) => {
+    if (finished) return;
+
     const text = `🔍 Scanning channel ${completedChannels}/${totalChannels} — most recent: #${channelName}`;
     const now = Date.now();
     if (now - lastEditAt >= MIN_EDIT_SPACING_MS) {
       lastEditAt = now;
-      interaction.editReply(text).catch(() => { /* non-fatal: keep scanning */ });
+      editProgress(text);
     } else if (!flushing) {
       pendingText = text;
       flushing = true;
-      setTimeout(() => {
+      flushTimer = setTimeout(() => {
         flushing = false;
-        if (pendingText !== null) {
+        flushTimer = null;
+        if (pendingText !== null && !finished) {
           lastEditAt = Date.now();
-          interaction.editReply(pendingText).catch(() => { /* non-fatal */ });
+          editProgress(pendingText);
           pendingText = null;
         }
       }, Math.max(0, MIN_EDIT_SPACING_MS - (now - lastEditAt)));
     }
   };
 
-  const results = await InactiveUserService.scanInactiveUsers(interaction.client, pushProgress);
+  let results: UserRecord[];
+  try {
+    results = await InactiveUserService.scanInactiveUsers(interaction.client, pushProgress);
+  } finally {
+    // Stop the throttle before anything else is posted: a flush scheduled by
+    // the last channel fires up to two seconds later, and would otherwise
+    // overwrite the "Scan complete" text (or the error the dispatcher reports
+    // when the scan throws) with a stale progress line. A finished scan that
+    // still says "Scanning" looks hung and invites an expensive re-run.
+    finished = true;
+    if (flushTimer !== null) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    pendingText = null;
+    flushing = false;
+  }
 
-  await interaction.editReply(
+  await finishReply(
+    interaction,
     `✅ Scan complete: ${results.length} inactive members (no activity in over a year).` +
     (results.length === 0
       ? ' Nobody left to purge.'
       : ' See data/inactive_users.json — run `/purge preview` to review and arm the real purge.')
-  ).catch(() => { /* non-fatal */ });
+  );
 }
 
 /**
@@ -316,24 +391,31 @@ export async function handlePurgeButton(interaction: ButtonInteraction): Promise
     components: [],
   });
 
+  let result: PurgeResult;
   try {
-    const result = await InactiveUserService.purgeInactiveUsers(interaction.client);
-    await interaction.editReply(formatPurgeSummary(result));
+    result = await InactiveUserService.purgeInactiveUsers(interaction.client);
   } catch (err) {
     if (err instanceof UserListMalformedError) {
       // Fail closed: no kicks made; the list needs fixing first.
       log.error('Purge aborted (malformed user list):', err.detail);
-      await interaction.editReply(`Purge aborted, no one was kicked: ${err.message}`);
+      await finishReply(interaction, `Purge aborted, no one was kicked: ${err.message}`);
       return;
     }
     log.error('Purge failed:', err);
     // Generic catch-all, so err.message is untrusted: it could come from a
     // library or a list-parsing path and name a file we do not disclose in
     // channel. Post a generic line and keep the real message in the log.
-    await interaction.editReply(
+    await finishReply(
+      interaction,
       `Purge aborted. Partial results are in ${RESULTS_FILE}; see the log for details.`
     );
+    return;
   }
+
+  // The kicks are done and the audit file is written, so posting the summary is
+  // a separate concern: a failed edit here must not be reported as a failed
+  // purge (finishReply falls back to the channel when the token is gone).
+  await finishReply(interaction, formatPurgeSummary(result));
 }
 
 export const purgeCommand: SlashCommand = {
