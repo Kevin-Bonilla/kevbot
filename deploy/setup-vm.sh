@@ -89,7 +89,7 @@ if grep -qE '^DISCORD_TOKEN=YOUR_TOKEN_HERE' "$APP_DIR/.env"; then
   die "DISCORD_TOKEN is still the placeholder. Edit $APP_DIR/.env first."
 fi
 if ! grep -qE '^(PURGE_ROLE_ID|PURGE_ADMIN_IDS|PURGE_ROLE_NAME)=' "$APP_DIR/.env"; then
-  say "WARNING: no purge role configured — !purgeDryRun / !purge will be disabled."
+  say "WARNING: no purge role configured — /purge will be disabled."
 fi
 
 # --- Data files ---

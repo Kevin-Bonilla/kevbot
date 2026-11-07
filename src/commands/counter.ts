@@ -1,40 +1,38 @@
-import { Command } from '../types';
+import { SlashCommandBuilder } from 'discord.js';
+import type { SlashCommand } from '../types';
 import { CounterService } from '../services/counter.service';
+import { ADMIN_CHANNELS } from '../config/admin-channels';
 
 /**
- * Command to increment the oopsie counter.
- * Only available in kevins-ai-chamber
- * 
- * @param name - The name of the command
- * @param description - The description of the command
- * @param requiredChannelId - The ID of the channel where the command is allowed
- * @returns A promise that resolves when the command has been executed
+ * The Matthew Oopsie Counter, as slash commands.
+ *
+ * `/oopsie`        — record an Oopsie (+1)
+ * `/oopsiecounter` — show the current total
+ *
+ * Both keep the restriction the message commands had: they only work in
+ * kevins-ai-chamber (ADMIN_CHANNELS.kevinsAiChamber, enforced by the dispatcher in
+ * src/index.ts). The old `if (message.author.bot) return` guard is inherent
+ * to slash commands — Discord does not let a bot user invoke one.
  */
-export const oopsieCommand: Command = {
-  name: '!oopsie',
-  description: 'Increments the counter',
-  requiredChannelId: '1552121753692667977',
-  execute: async (message) => {
+
+export const oopsieCommand: SlashCommand = {
+  data: new SlashCommandBuilder()
+    .setName('oopsie')
+    .setDescription('Increments the Oopsie counter'),
+  requiredChannelId: ADMIN_CHANNELS.kevinsAiChamber,
+  execute: async (interaction) => {
     const newCount = CounterService.increment();
-    await message.reply(`The Jit with Two Kids made an Oopsie! Current count: ${newCount}`);
+    await interaction.reply(`The Jit with Two Kids made an Oopsie! Current count: ${newCount}`);
   },
 };
 
-/**
- * Command to display the oopsie counter.
- * Only available in kevins-ai-chamber
- * 
- * @param name - The name of the command
- * @param description - The description of the command
- * @param requiredChannelId - The ID of the channel where the command is allowed
- * @returns A promise that resolves when the command has been executed
- */
-export const displayOopsieCountCommand: Command = {
-  name: '!oopsiecounter',
-  description: 'Displays the current counter',
-  requiredChannelId: '1552121753692667977',
-  execute: async (message) => {
+export const displayOopsieCountCommand: SlashCommand = {
+  data: new SlashCommandBuilder()
+    .setName('oopsiecounter')
+    .setDescription('Displays the current Oopsie count'),
+  requiredChannelId: ADMIN_CHANNELS.kevinsAiChamber,
+  execute: async (interaction) => {
     const count = CounterService.getCount();
-    await message.reply(`The Jit with Two Kids made ${count} Oopsies!`);
+    await interaction.reply(`The Jit with Two Kids made ${count} Oopsies!`);
   },
 };

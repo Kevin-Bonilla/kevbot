@@ -134,7 +134,7 @@ export class InactiveUserService {
   }
 
   /**
-   * True when a scan file exists (i.e. `!purgeDryRun` has been run at least once).
+   * True when a scan file exists (i.e. `/purge dry-run` has been run at least once).
    * 
    * @returns Whether scan data is available
    */

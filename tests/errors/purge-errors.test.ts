@@ -69,7 +69,7 @@ describe('UserListMalformedError', () => {
     const err = new UserListMalformedError('whitelist', '/x/y.json', 'shape');
     expect(err.message).toMatch(/aborted/i);
     expect(err.message).toMatch(/no one was kicked/i);
-    expect(err.message).toContain('!purge');
+    expect(err.message).toContain('/purge preview');
   });
 
   it('includes the cause message in detail when given an Error', () => {
