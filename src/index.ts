@@ -3,6 +3,7 @@ import type { ButtonInteraction, ChatInputCommandInteraction } from 'discord.js'
 import dotenv from 'dotenv';
 import { log, logTarget } from './logging/logger';
 import { DeathCounterService } from './services/death-counter.service';
+import { announceBackUp, announceGoingDown } from './services/deployment.service';
 import { handlePurgeButton, PURGE_BUTTON_IDS } from './commands/index';
 import { slashCommands } from './commands/registry';
 
@@ -93,6 +94,11 @@ client.once('clientReady', () => {
   // Fire-and-forget: the ready handler must not await REST calls, and
   // registerSlashCommands() already logs its own failures.
   void registerSlashCommands();
+  
+  // Also fire-and-forget, and never throws: this only posts when the previous
+  // process left a fresh deploy marker (see deployment.service.ts), so a crash
+  // restart stays quiet instead of announcing itself as an update.
+  void announceBackUp(client);
 });
 
 /**
@@ -209,12 +215,22 @@ if (TOKEN && TOKEN !== 'YOUR_TOKEN_HERE') {
  * purge would lose its in-flight kicks without writing the results file, and
  * the next run would start from a stale target list. destroy() closes the
  * gateway and lets the process exit, which systemd's TimeoutStopSec allows for.
+ *
+ * SIGTERM is also the deploy signal (`docker stop` sends it), so that is where
+ * the "going to sleep" announcement happens. It must be posted before
+ * destroy() — once the gateway is closed there is no way to send anything —
+ * and it is bounded by a timeout inside announceGoingDown() so a wedged REST
+ * call cannot outlast docker stop's 30 seconds and turn into a SIGKILL. SIGINT
+ * is deliberately left quiet: it is a local Ctrl-C, not a deployment.
  */
 let shuttingDown = false;
 async function shutdown(signal: string): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   log.info(`Received ${signal}, shutting down...`);
+  if (signal === 'SIGTERM') {
+    await announceGoingDown(client);
+  }
   try {
     await client.destroy();
     log.info('Gateway closed cleanly.');

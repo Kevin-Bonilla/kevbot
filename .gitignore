@@ -11,6 +11,12 @@ data/purge_results.json
 # never commit it (and the -journal/-wal siblings SQLite may create).
 data/kevbot.db*
 
+# Set by the shutdown handler when a deploy stops the bot, read and deleted by
+# the next startup to decide whether to post the "awake" announcement. Runtime
+# state on the data volume, never committed.
+data/deploy-pending.json
+data/deploy-pending.json.tmp
+
 # Terraform (deploy/tf): state files carry resource identifiers and are
 # machine-specific. Never commit them; .terraform.lock.hcl SHOULD be committed.
 deploy/tf/.terraform/

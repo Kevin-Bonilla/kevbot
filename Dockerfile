@@ -17,6 +17,16 @@ RUN npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
 
+# The commit this image was built from, stamped in by deploy/setup-vm.sh
+# (`--build-arg KEVBOT_COMMIT=$(git rev-parse --short HEAD)`). /status reads it
+# so "which build is running?" is answerable from Discord instead of by SSHing
+# to the VM — where the checked-out ref can differ from the built image if the
+# service was never restarted. Unset for local and CI builds, which show
+# "unknown"; an ARG is used rather than a COPY so the build context still does
+# not need .git (see .dockerignore).
+ARG KEVBOT_COMMIT=unknown
+ENV KEVBOT_COMMIT=${KEVBOT_COMMIT}
+
 # dumb-init reaps zombies and, critically, forwards SIGTERM to node so
 # systemd's stop/restart shuts the gateway down cleanly instead of killing it.
 RUN apk add --no-cache dumb-init
