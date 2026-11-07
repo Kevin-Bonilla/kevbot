@@ -18,6 +18,7 @@ message commands: Discord intercepts a leading `/` client-side, so a literal
 | `/purge dry-run` | Scans for inactive members. No kicks. | kevins-ai-chamber only + purge role |
 | `/purge preview` | Reports the kick count and posts Confirm / Cancel. | kevins-ai-chamber only + purge role |
 | `/debug` | Bot status and guild counts. | kevins-ai-chamber only |
+| `/status` | Uptime, running build, guild counts, gateway ping, memory. | none |
 | `/github` | Link to the repository. | none |
 
 Names are case-insensitive and whitespace-trimmed for the counters, so
@@ -29,6 +30,23 @@ If a command does not appear in Discord, the bot is missing the
 `applications.commands` scope: re-invite it with that scope. If it appears but
 refuses to run, it is either in the wrong channel (the reply says which one is
 allowed) or, for `/purge`, you lack the purge role.
+
+## Deployment announcements
+
+The bot announces a deploy in kevins-ai-chamber:
+
+- `Kevbot is going sleep 💤. He has a deployment happening rn` — posted on
+  SIGTERM, which is what `docker stop` sends, so `systemctl restart kevbot` and
+  `deploy/setup-vm.sh` both trigger it.
+- `Kevbot is updated and awake! ☀️` — posted on the next startup, once the
+  gateway is ready.
+
+The second message only appears when the shutdown left
+`data/deploy-pending.json` behind, so a crash restart is silent, and a marker
+older than 15 minutes is treated as a deploy that never completed. SIGINT (a
+local Ctrl-C) never announces, and neither does any run that is not
+`NODE_ENV=production` — the production image sets it, so `npm run dev` does not
+post on every save.
 
 ## Restrictions
 

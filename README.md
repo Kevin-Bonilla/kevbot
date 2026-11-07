@@ -28,6 +28,7 @@ message never reaches the bot.
 | `/oopsie`, `/oopsiecounter` | kevins-ai-chamber only |
 | `/purge dry-run`, `/purge preview` + Confirm/Cancel | kevins-ai-chamber only + purge role |
 | `/debug` | kevins-ai-chamber only |
+| `/status` | none |
 | `/github` | none |
 
 The channel and role restrictions are deliberate and enforced in code (channel
@@ -71,6 +72,28 @@ Secrets and the user lists are gitignored, so they exist only on the VM:
 death-counter database (`data/kevbot.db`) is also VM-only state — back it up
 with the lists, since it holds the only copy of the counts.
 
+### Deploy announcements
+
+The bot announces deploys in kevins-ai-chamber:
+
+- `Kevbot is going sleep 💤. He has a deployment happening rn` — on SIGTERM,
+  which is what `docker stop` sends, and therefore what
+  `systemctl restart kevbot` (and `deploy/setup-vm.sh`) triggers.
+- `Kevbot is updated and awake! ☀️` — on the next startup, once the gateway is
+  ready.
+
+The shutdown writes `data/deploy-pending.json`; the next start only announces
+when that marker exists and is less than 15 minutes old. That is what keeps a
+crash restart (`Restart=always`) or a deploy that never came back from posting
+a misleading "awake", and it means the hand-off survives the container being
+replaced. SIGINT is quiet (a local Ctrl-C is not a deploy), and so is every run
+that is not `NODE_ENV=production` — the image sets that, `npm run dev` does not,
+so a dev restart never posts.
+
+`/status` reports the uptime, the commit the image was built from
+(`KEVBOT_COMMIT`, stamped by `setup-vm.sh`), guild counts, gateway ping, and
+memory. See [src/commands/commands.md](src/commands/commands.md).
+
 The bot handles `SIGTERM`/`SIGINT` for a clean gateway shutdown, and logs
 disconnects and unhandled rejections so a dead connection is visible in the
 journal instead of silent.
@@ -103,6 +126,9 @@ Copy `.env.example` to `.env`. Key variables:
 - `LOG_FILE` — app log file, appended (default `logs/kevbot.log`).
 - `LOG_FORMAT` — `text | json`, serialization of the **log file** (default
   `text`; the console stays text). Set `json` on the VM for OCI Logging.
+- `KEVBOT_COMMIT` — not a `.env` value: the commit is passed as a Docker build
+  arg by `deploy/setup-vm.sh` and shown by `/status` as the running build. It
+  is `unknown` for local and CI builds.
 
 Logging is app-wide: `import { log } from './logging/logger'` and call
 `log.debug/info/warn/error(msg, ...extra)`. Every line goes to the console

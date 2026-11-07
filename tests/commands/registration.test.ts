@@ -49,6 +49,7 @@ const EXPECTED_COMMANDS: Record<string, { channelRestricted: boolean }> = {
   oopsiecounter: { channelRestricted: true },
   purge: { channelRestricted: true },
   debug: { channelRestricted: true },
+  status: { channelRestricted: false },
   github: { channelRestricted: false },
 };
 

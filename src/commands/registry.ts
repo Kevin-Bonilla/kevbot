@@ -4,6 +4,7 @@ import { deathCounterCommand, deathLeaderboardCommand, diedCommand } from './dea
 import { debugCommand } from './debug';
 import { githubCommand } from './github';
 import { purgeCommand } from './purge';
+import { statusCommand } from './status';
 
 /**
  * The single registry of commands the bot publishes to Discord.
@@ -28,5 +29,6 @@ export const slashCommands: SlashCommand[] = [
   displayOopsieCountCommand,
   purgeCommand,
   debugCommand,
+  statusCommand,
   githubCommand,
 ];

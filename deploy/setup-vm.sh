@@ -108,7 +108,11 @@ done
 
 # --- Build ---
 say "Building image (first build takes a few minutes)"
-docker build -t kevbot:latest "$APP_DIR"
+# Stamp the commit into the image so /status can report the build that is
+# actually running (Dockerfile ARG KEVBOT_COMMIT). The checkout may be ahead of
+# the running service, so the ref alone is not the answer.
+GIT_COMMIT="$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+docker build --build-arg "KEVBOT_COMMIT=$GIT_COMMIT" -t kevbot:latest "$APP_DIR"
 
 # --- Service ---
 if [ -f "$APP_DIR/deploy/kevbot.service" ]; then
